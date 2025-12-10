@@ -73,7 +73,6 @@ jobs:
       uses: golangci/golangci-lint-action@v4
       with:
         version: v1.64.8
-        args: --timeout=5m --config=.golangci.yml
 
   format:
     name: Format Check
