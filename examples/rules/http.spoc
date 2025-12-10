@@ -1,0 +1,5 @@
+# HTTP access rules
+(4:http(4:page10:index.html)(6:action3:GET)(6:userid))
+(4:http(4:page9:admin.php)(6:action)(6:userid5:admin))
+(4:http(4:page)(6:action3:GET)(6:userid4:john))
+(4:http(4:page)(6:action4:POST)(6:userid4:jane))
