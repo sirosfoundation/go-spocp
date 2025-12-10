@@ -1,5 +1,11 @@
 # go-spocp
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/sirosfoundation/go-spocp.svg)](https://pkg.go.dev/github.com/sirosfoundation/go-spocp)
+[![CI](https://github.com/sirosfoundation/go-spocp/actions/workflows/ci.yml/badge.svg)](https://github.com/sirosfoundation/go-spocp/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/sirosfoundation/go-spocp)](https://goreportcard.com/report/github.com/sirosfoundation/go-spocp)
+[![codecov](https://codecov.io/gh/sirosfoundation/go-spocp/branch/main/graph/badge.svg)](https://codecov.io/gh/sirosfoundation/go-spocp)
+[![License](https://img.shields.io/badge/License-BSD_2--Clause-blue.svg)](https://opensource.org/licenses/BSD-2-Clause)
+
 A Go implementation of the SPOCP (Simple Policy Control Protocol) authorization engine based on restricted S-expressions.
 
 ## Overview
