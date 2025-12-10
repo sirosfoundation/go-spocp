@@ -717,3 +717,15 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		tagCount,
 	)
 }
+
+// GetEngine returns the SPOCP engine for shared use.
+func (s *Server) GetEngine() *spocp.Engine {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.engine
+}
+
+// GetEngineMutex returns the engine's RWMutex for shared synchronization.
+func (s *Server) GetEngineMutex() *sync.RWMutex {
+	return &s.mu
+}

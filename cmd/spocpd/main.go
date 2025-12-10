@@ -1,4 +1,4 @@
-// SPOCP server - TCP server with dynamic rule loading
+// SPOCP server - TCP and HTTP/AuthZen server with dynamic rule loading
 package main
 
 import (
@@ -10,12 +10,21 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/sirosfoundation/go-spocp/pkg/httpserver"
 	"github.com/sirosfoundation/go-spocp/pkg/server"
 )
 
 func main() {
 	var (
-		address        = flag.String("addr", ":6000", "Address to listen on (host:port)")
+		// TCP options
+		tcpEnabled = flag.Bool("tcp", true, "Enable TCP server")
+		tcpAddress = flag.String("addr", ":6000", "TCP address to listen on (host:port)")
+
+		// HTTP/AuthZen options
+		httpEnabled = flag.Bool("http", false, "Enable HTTP/AuthZen server")
+		httpAddress = flag.String("http-addr", ":8000", "HTTP address to listen on (host:port)")
+
+		// Common options
 		rulesDir       = flag.String("rules", "", "Directory containing .spoc rule files (required)")
 		tlsCert        = flag.String("tls-cert", "", "Path to TLS certificate file (optional)")
 		tlsKey         = flag.String("tls-key", "", "Path to TLS private key file (optional)")
@@ -30,6 +39,13 @@ func main() {
 	// Validate required arguments
 	if *rulesDir == "" {
 		fmt.Fprintf(os.Stderr, "Error: -rules directory is required\n\n")
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	// At least one server must be enabled
+	if !*tcpEnabled && !*httpEnabled {
+		fmt.Fprintf(os.Stderr, "Error: at least one of -tcp or -http must be enabled\n\n")
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -75,7 +91,7 @@ func main() {
 
 	// Create server
 	config := &server.Config{
-		Address:        *address,
+		Address:        *tcpAddress,
 		RulesDir:       *rulesDir,
 		TLSConfig:      tlsConfig,
 		ReloadInterval: *reloadInterval,
@@ -85,28 +101,77 @@ func main() {
 		LogLevel:       level,
 	}
 
-	srv, err := server.NewServer(config)
-	if err != nil {
-		log.Fatalf("Failed to create server: %v", err)
+	var srv *server.Server
+	var httpSrv *httpserver.HTTPServer
+
+	// Create TCP server if enabled
+	if *tcpEnabled {
+		var err error
+		srv, err = server.NewServer(config)
+		if err != nil {
+			log.Fatalf("Failed to create TCP server: %v", err)
+		}
+	}
+
+	// Create HTTP server if enabled
+	if *httpEnabled {
+		httpConfig := &httpserver.Config{
+			Address:  *httpAddress,
+			Logger:   logger,
+			LogLevel: level,
+		}
+
+		// Share engine from TCP server if available
+		if srv != nil {
+			httpConfig.Engine = srv.GetEngine()
+			httpConfig.EngineMutex = srv.GetEngineMutex()
+		} else {
+			// HTTP-only mode: need to configure standalone
+			httpConfig.RulesDir = *rulesDir
+			httpConfig.ReloadInterval = *reloadInterval
+			httpConfig.PidFile = *pidFile
+		}
+
+		var err error
+		httpSrv, err = httpserver.NewHTTPServer(httpConfig)
+		if err != nil {
+			if srv != nil {
+				srv.Close()
+			}
+			log.Fatalf("Failed to create HTTP server: %v", err)
+		}
 	}
 
 	// Handle shutdown signals
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
+	// Shutdown handler
+	shutdownComplete := make(chan struct{})
 	go func() {
 		<-sigChan
 		if level >= server.LogLevelInfo {
 			logger.Println("[INFO] Received shutdown signal")
 		}
-		srv.Close()
+		if srv != nil {
+			srv.Close()
+		}
+		if httpSrv != nil {
+			httpSrv.Close()
+		}
+		close(shutdownComplete)
 	}()
 
-	// Start server
+	// Start servers
 	if level >= server.LogLevelInfo {
 		logger.Printf("[INFO] SPOCP Server starting...")
-		logger.Printf("[INFO]   Address: %s", *address)
 		logger.Printf("[INFO]   Rules directory: %s", *rulesDir)
+		if *tcpEnabled {
+			logger.Printf("[INFO]   TCP server: %s", *tcpAddress)
+		}
+		if *httpEnabled {
+			logger.Printf("[INFO]   HTTP/AuthZen server: %s", *httpAddress)
+		}
 		if *reloadInterval > 0 {
 			logger.Printf("[INFO]   Auto-reload: every %v", *reloadInterval)
 		}
@@ -119,7 +184,20 @@ func main() {
 		logger.Printf("[INFO]   Log level: %s", *logLevel)
 	}
 
-	if err := srv.Serve(); err != nil {
-		log.Fatalf("Server error: %v", err)
+	// Start HTTP server in background if enabled
+	if *httpEnabled && httpSrv != nil {
+		if err := httpSrv.Start(); err != nil {
+			log.Fatalf("HTTP server error: %v", err)
+		}
+	}
+
+	// Start TCP server (blocking) if enabled, or wait for shutdown
+	if *tcpEnabled && srv != nil {
+		if err := srv.Serve(); err != nil {
+			log.Fatalf("TCP server error: %v", err)
+		}
+	} else {
+		// If only HTTP is enabled, wait for shutdown signal
+		<-shutdownComplete
 	}
 }

@@ -1,0 +1,19 @@
+# AuthZen example rules for SPOCP
+# Maps AuthZen requests to SPOCP S-expressions
+#
+# Format: (resource_type (id <id>)(action <action>)(subject ...))
+#
+# Allow alice to read account 123
+(7:account(2:id3:123)(6:action8:can_read)(7:subject(4:type4:user)(2:id18:alice@acmecorp.com)))
+
+# Allow any user in Sales to read account 123
+(7:account(2:id3:123)(6:action8:can_read)(7:subject(4:type4:user)(10:department5:Sales)))
+
+# Allow bob to delete files
+(4:file(6:action10:can_delete)(7:subject(4:type4:user)(2:id3:bob)))
+
+# Allow any manager to update documents
+(8:document(6:action10:can_update)(7:subject(4:type4:user)(4:role7:manager)))
+
+# Allow anyone to read public documents
+(8:document(10:visibility6:public)(6:action8:can_read)(7:subject))
