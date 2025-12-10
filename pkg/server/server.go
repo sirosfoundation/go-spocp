@@ -90,6 +90,10 @@ type Config struct {
 
 	// HealthAddr for health check endpoint (e.g., ":8080", optional)
 	HealthAddr string
+
+	// Engine allows providing a pre-existing engine (optional, for testing/benchmarking)
+	// If provided, RulesDir is not required and rules are not loaded from disk.
+	Engine *spocp.Engine
 }
 
 // NewServer creates a new SPOCP server
@@ -97,13 +101,16 @@ func NewServer(config *Config) (*Server, error) {
 	if config.Address == "" {
 		return nil, fmt.Errorf("address is required")
 	}
-	if config.RulesDir == "" {
-		return nil, fmt.Errorf("rules directory is required")
-	}
 
-	// Check if rules directory exists
-	if _, err := os.Stat(config.RulesDir); os.IsNotExist(err) {
-		return nil, fmt.Errorf("rules directory does not exist: %s", config.RulesDir)
+	// If no pre-existing engine provided, we need RulesDir
+	if config.Engine == nil {
+		if config.RulesDir == "" {
+			return nil, fmt.Errorf("rules directory is required (or provide Engine)")
+		}
+		// Check if rules directory exists
+		if _, err := os.Stat(config.RulesDir); os.IsNotExist(err) {
+			return nil, fmt.Errorf("rules directory does not exist: %s", config.RulesDir)
+		}
 	}
 
 	// Setup logger
@@ -119,8 +126,14 @@ func NewServer(config *Config) (*Server, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
+	// Use provided engine or create new one
+	engine := config.Engine
+	if engine == nil {
+		engine = spocp.NewEngine()
+	}
+
 	s := &Server{
-		engine:     spocp.NewEngine(),
+		engine:     engine,
 		rulesDir:   config.RulesDir,
 		tlsConfig:  config.TLSConfig,
 		logger:     logger,
@@ -142,11 +155,13 @@ func NewServer(config *Config) (*Server, error) {
 		}
 	}
 
-	// Load initial rules
-	if err := s.reloadRules(); err != nil {
-		cancel()
-		s.removePidFile()
-		return nil, fmt.Errorf("failed to load initial rules: %w", err)
+	// Load initial rules (only if not using pre-existing engine)
+	if config.Engine == nil {
+		if err := s.reloadRules(); err != nil {
+			cancel()
+			s.removePidFile()
+			return nil, fmt.Errorf("failed to load initial rules: %w", err)
+		}
 	}
 
 	// Create listener

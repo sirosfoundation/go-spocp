@@ -1,4 +1,4 @@
-.PHONY: all build test test-verbose coverage clean fmt vet lint help bench bench-long perftest perftest-sizes perftest-large indexperf indexperf-large
+.PHONY: all build test test-verbose coverage clean fmt vet lint help bench bench-long perftest perftest-sizes perftest-large indexperf indexperf-large protocolperf protocolperf-quick
 
 # Go parameters
 GOCMD=go
@@ -115,6 +115,14 @@ indexperf: ## Compare indexed vs non-indexed performance (10k rules)
 indexperf-large: ## Compare indexed vs non-indexed with large ruleset (50k rules)
 	@echo "Running index performance comparison (large)..."
 	$(GOCMD) run cmd/indexperf/main.go -rules 50000 -queries 5000 -tags 20 -stats
+
+protocolperf: ## Compare Direct vs TCP vs HTTP/AuthZen performance
+	@echo "Running protocol performance comparison..."
+	$(GOCMD) run cmd/protocolperf/main.go -rules 1000 -queries 10000
+
+protocolperf-concurrent: ## Compare protocols with concurrent clients
+	@echo "Running protocol performance comparison (concurrent)..."
+	$(GOCMD) run cmd/protocolperf/main.go -rules 1000 -queries 10000 -concurrent 4
 
 deps: ## Download dependencies
 	@echo "Downloading dependencies..."
