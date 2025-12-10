@@ -8,6 +8,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+- **HTTP/AuthZen API Support**:
+  - AuthZen Authorization API 1.0 endpoint (`POST /access/v1/evaluation`)
+  - Automatic AuthZen JSON to SPOCP S-expression conversion
+  - Dual-protocol server supporting TCP and HTTP simultaneously
+  - Command-line flags: `-tcp`, `-http`, `-http-addr`
+  - Shared engine mode for dual-protocol deployments
+  - Standalone HTTP mode with automatic rule loading
+  - Request metrics and X-Request-ID header support
+  - See `docs/AUTHZEN.md` for details
+
+- **Documentation Enhancements**:
+  - Comprehensive godoc comments for all public APIs
+  - Package-level examples for `httpserver` package
+  - Method documentation with usage examples
+  - Three new ADRs documenting architectural decisions:
+    - ADR-09: Dual-Protocol Server Architecture
+    - ADR-10: AuthZen S-Expression Mapping Strategy
+    - ADR-11: HTTP Server Operational Modes
+  - Updated README.md with HTTP/AuthZen features
+  - Complete AuthZen integration guide in `docs/AUTHZEN.md`
+
+### Changed
+
+- **Bug Fix**: Fixed mutex copying issue in `httpserver` package
+  - Changed `HTTPServer.mu` from value to pointer (`*sync.RWMutex`)
+  - Enables proper mutex sharing between TCP and HTTP servers
+  - Prevents lock value copying warning
+
+### Added (from previous work)
+
 - Initial implementation of SPOCP authorization engine
 - S-expression parser supporting canonical form (length-prefixed)
 - Star form implementations:

@@ -1,4 +1,56 @@
-// Package httpserver implements HTTP/AuthZen endpoint for SPOCP.
+// Package httpserver implements the HTTP/AuthZen Authorization API endpoint for SPOCP.
+//
+// This package provides an HTTP server that implements the OpenID AuthZen Authorization
+// API 1.0 specification (https://openid.net/specs/authorization-api-1_0-01.html),
+// allowing RESTful JSON-based authorization queries to be evaluated by the SPOCP engine.
+//
+// The server can operate in two modes:
+//
+//  1. Standalone mode: Creates its own SPOCP engine and loads rules from a directory
+//  2. Shared mode: Uses an engine shared with the TCP server for dual-protocol operation
+//
+// Example standalone usage:
+//
+//	config := &httpserver.Config{
+//	    Address:  ":8000",
+//	    RulesDir: "/etc/spocp/rules",
+//	    LogLevel: server.LogLevelInfo,
+//	}
+//	srv, err := httpserver.NewHTTPServer(config)
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	srv.Start()
+//
+// Example shared mode usage:
+//
+//	tcpSrv, _ := server.NewServer(&server.Config{...})
+//	config := &httpserver.Config{
+//	    Address:      ":8000",
+//	    Engine:       tcpSrv.GetEngine(),
+//	    EngineMutex:  tcpSrv.GetEngineMutex(),
+//	    LogLevel:     server.LogLevelInfo,
+//	}
+//	httpSrv, _ := httpserver.NewHTTPServer(config)
+//	httpSrv.Start()
+//
+// The server exposes a single endpoint:
+//
+//	POST /access/v1/evaluation - Evaluate authorization request
+//
+// Request format (JSON):
+//
+//	{
+//	  "subject": {"type": "user", "id": "alice"},
+//	  "resource": {"type": "document", "id": "123"},
+//	  "action": {"name": "can_read"}
+//	}
+//
+// Response format (JSON):
+//
+//	{
+//	  "decision": true
+//	}
 package httpserver
 
 import (
@@ -24,7 +76,7 @@ import (
 type HTTPServer struct {
 	server   *http.Server
 	engine   *spocp.Engine
-	mu       sync.RWMutex
+	mu       *sync.RWMutex // Pointer to allow sharing mutex with other components
 	logger   *log.Logger
 	logLevel server.LogLevel
 	ctx      context.Context
@@ -68,6 +120,35 @@ type Config struct {
 }
 
 // NewHTTPServer creates a new HTTP/AuthZen server.
+//
+// The server can operate in two modes:
+//  1. Standalone mode: Provide RulesDir in config, server creates and manages its own engine
+//  2. Shared mode: Provide Engine and EngineMutex in config, server shares engine with other components
+//
+// Required config fields:
+//   - Address: HTTP listen address (e.g., ":8000")
+//   - Either RulesDir (standalone) or Engine + EngineMutex (shared)
+//
+// Optional config fields:
+//   - Logger: Custom logger (defaults to standard logger with [SPOCP-HTTP] prefix)
+//   - LogLevel: Controls verbosity (0=silent, 1=error, 2=warn, 3=info, 4=debug)
+//
+// Example (standalone):
+//
+//	srv, err := NewHTTPServer(&Config{
+//	    Address: ":8000",
+//	    RulesDir: "/etc/spocp/rules",
+//	    LogLevel: 3,
+//	})
+//
+// Example (shared with TCP server):
+//
+//	tcpServer := server.NewServer(...)
+//	httpSrv, err := NewHTTPServer(&Config{
+//	    Address: ":8000",
+//	    Engine: tcpServer.GetEngine(),
+//	    EngineMutex: tcpServer.GetEngineMutex(),
+//	})
 func NewHTTPServer(config *Config) (*HTTPServer, error) {
 	if config.Address == "" {
 		return nil, fmt.Errorf("address is required")
@@ -101,9 +182,11 @@ func NewHTTPServer(config *Config) (*HTTPServer, error) {
 		cancel:   cancel,
 	}
 
-	// If engine mutex provided, use it; otherwise use own mutex
+	// If engine mutex provided, use it; otherwise create own mutex
 	if config.EngineMutex != nil {
-		hs.mu = *config.EngineMutex
+		hs.mu = config.EngineMutex
+	} else {
+		hs.mu = &sync.RWMutex{}
 	}
 
 	// Setup HTTP routes
@@ -121,7 +204,18 @@ func NewHTTPServer(config *Config) (*HTTPServer, error) {
 	return hs, nil
 }
 
-// Start begins accepting HTTP requests.
+// Start begins accepting HTTP requests in a background goroutine.
+//
+// This method returns immediately after launching the HTTP server.
+// The server will continue running until Close() is called or an
+// unrecoverable error occurs.
+//
+// The server handles POST requests to /access/v1/evaluation according
+// to the AuthZen Authorization API 1.0 specification.
+//
+// Returns an error only if the server cannot be started (e.g., port
+// already in use). Runtime errors are logged but don't propagate to
+// the caller.
 func (hs *HTTPServer) Start() error {
 	hs.logInfo("AuthZen HTTP server listening on %s", hs.server.Addr)
 
@@ -137,6 +231,14 @@ func (hs *HTTPServer) Start() error {
 }
 
 // Close gracefully shuts down the HTTP server.
+//
+// This method:
+//  1. Stops accepting new connections
+//  2. Waits up to 5 seconds for existing requests to complete
+//  3. Forcefully closes remaining connections after timeout
+//  4. Waits for background goroutines to exit
+//
+// Returns an error if shutdown fails or times out.
 func (hs *HTTPServer) Close() error {
 	hs.logInfo("Shutting down HTTP server...")
 	hs.cancel()
@@ -154,6 +256,33 @@ func (hs *HTTPServer) Close() error {
 }
 
 // handleEvaluation handles AuthZen access evaluation requests.
+//
+// Endpoint: POST /access/v1/evaluation
+//
+// Request format (JSON):
+//
+//	{
+//	  "subject": {"type": "user", "id": "alice@acmecorp.com"},
+//	  "resource": {"type": "account", "id": "123"},
+//	  "action": {"name": "can_read"}
+//	}
+//
+// Response format (JSON):
+//
+//	{
+//	  "decision": true,
+//	  "context": {"id": "<request-id>"}
+//	}
+//
+// The handler:
+//  1. Validates HTTP method (must be POST)
+//  2. Parses JSON request body into EvaluationRequest
+//  3. Converts AuthZen request to SPOCP S-expression
+//  4. Queries the SPOCP engine (with read lock for thread safety)
+//  5. Returns decision as JSON response
+//
+// Supports X-Request-ID header for distributed tracing.
+// Updates internal metrics for monitoring.
 func (hs *HTTPServer) handleEvaluation(w http.ResponseWriter, r *http.Request) {
 	// Only allow POST
 	if r.Method != http.MethodPost {
@@ -259,7 +388,7 @@ func (hs *HTTPServer) GetMetrics() map[string]int64 {
 // loadRulesFromDir loads all .spoc files from a directory into the engine.
 func loadRulesFromDir(engine *spocp.Engine, dir string) error {
 	var ruleCount int
-	
+
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err

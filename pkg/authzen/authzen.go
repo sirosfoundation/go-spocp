@@ -48,24 +48,33 @@ type EvaluationResponse struct {
 }
 
 // ToSExpression converts an AuthZen evaluation request to a SPOCP S-expression query.
-// The mapping is:
-//   - Resource type becomes the top-level tag
-//   - Resource ID and properties are nested elements
-//   - Action name and properties are nested elements
-//   - Subject type, ID and properties are nested elements
-//   - Context fields are nested elements
 //
-// Example AuthZen request:
+// The conversion follows this mapping:
 //
-//	{
-//	  "subject": {"type": "user", "id": "alice@acmecorp.com"},
-//	  "resource": {"type": "account", "id": "123"},
-//	  "action": {"name": "can_read"}
-//	}
+//	AuthZen Request:
+//	  {
+//	    "subject": {"type": "user", "id": "alice@acmecorp.com"},
+//	    "resource": {"type": "account", "id": "123"},
+//	    "action": {"name": "can_read", "properties": {"method": "GET"}},
+//	    "context": {"ip": "192.168.1.1"}
+//	  }
 //
-// Maps to SPOCP query:
+//	SPOCP S-expression:
+//	  (account
+//	    (id 123)
+//	    (action can_read (method GET))
+//	    (subject (type user) (id alice@acmecorp.com))
+//	    (context (ip 192.168.1.1)))
 //
-//	(account (id 123)(action can_read)(subject (type user)(id alice@acmecorp.com)))
+// Structure rules:
+//   - Resource type becomes the outer tag
+//   - Resource properties become top-level elements
+//   - Action is wrapped in (action ...) with name as first atom
+//   - Subject is wrapped in (subject ...) with type and id if present
+//   - Context is wrapped in (context ...) and only included if non-empty
+//   - Properties are converted recursively (strings, bools, numbers, arrays, nested objects)
+//
+// Returns an error if any property value cannot be converted to an S-expression.
 func (r *EvaluationRequest) ToSExpression() (sexp.Element, error) {
 	// Build the query starting with resource type as the root
 	elements := []sexp.Element{sexp.NewAtom(r.Resource.Type)}
@@ -129,11 +138,37 @@ func (r *EvaluationRequest) ToSExpression() (sexp.Element, error) {
 }
 
 // buildList creates a List from a tag and slice of elements.
+//
+// This is a helper to work around sexp.NewList requiring variadic parameters
+// rather than a slice.
+//
+// Example:
+//
+//	elements := []sexp.Element{sexp.NewAtom("alice"), sexp.NewAtom("bob")}
+//	list := buildList("users", elements)
+//	// Result: (users alice bob)
 func buildList(tag string, elements []sexp.Element) *sexp.List {
 	return sexp.NewList(tag, elements...)
 }
 
 // propertyToSExp converts a property key-value pair to an S-expression.
+//
+// Conversion rules:
+//   - string: (key "value")
+//   - bool: (key true) or (key false)
+//   - number: (key 123) or (key 45.67)
+//   - array: (key (item1) (item2) ...)
+//   - object: (key (subkey1 value1) (subkey2 value2) ...)
+//
+// Examples:
+//
+//	propertyToSExp("name", "alice")           → (name alice)
+//	propertyToSExp("active", true)            → (active true)
+//	propertyToSExp("count", 42)               → (count 42)
+//	propertyToSExp("tags", []any{"foo","bar"}) → (tags (foo) (bar))
+//	propertyToSExp("meta", map[string]any{"key": "val"}) → (meta (key val))
+//
+// Returns an error if the value type is not supported.
 func propertyToSExp(key string, value interface{}) (sexp.Element, error) {
 	switch v := value.(type) {
 	case string:

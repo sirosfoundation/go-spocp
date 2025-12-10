@@ -718,7 +718,23 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	)
 }
 
-// GetEngine returns the SPOCP engine for shared use.
+// GetEngine returns the SPOCP engine for shared use with other components.
+//
+// This method allows the HTTP server (or other components) to share the same
+// SPOCP engine instance, enabling dual-protocol deployments where both TCP
+// and HTTP endpoints evaluate against the same rule set.
+//
+// The returned engine is protected by the server's RWMutex. Callers should
+// use GetEngineMutex() to synchronize access when performing read or write
+// operations.
+//
+// Example usage:
+//
+//	tcpServer := server.NewServer(...)
+//	httpServer := httpserver.NewHTTPServer(&httpserver.Config{
+//	    Engine: tcpServer.GetEngine(),
+//	    EngineMutex: tcpServer.GetEngineMutex(),
+//	})
 func (s *Server) GetEngine() *spocp.Engine {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -726,6 +742,18 @@ func (s *Server) GetEngine() *spocp.Engine {
 }
 
 // GetEngineMutex returns the engine's RWMutex for shared synchronization.
+//
+// When sharing the engine between components (e.g., TCP and HTTP servers),
+// this mutex must be used to synchronize all access to the engine:
+//   - Use RLock/RUnlock for read operations (queries)
+//   - Use Lock/Unlock for write operations (add rules, reload)
+//
+// Example usage:
+//
+//	mu := tcpServer.GetEngineMutex()
+//	mu.RLock()
+//	decision := engine.QueryElement(query)
+//	mu.RUnlock()
 func (s *Server) GetEngineMutex() *sync.RWMutex {
 	return &s.mu
 }

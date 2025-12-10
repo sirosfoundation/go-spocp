@@ -21,6 +21,7 @@ This library implements a generalized authorization service based on the SPOCP s
   - **Regular Engine**: Manual control over indexing
   - **Adaptive Engine**: Automatically optimizes based on ruleset characteristics
 - **Tag-Based Indexing**: 2-5x performance improvement for large rulesets with diverse tags
+- **Dual Protocol Support**: Run TCP and/or HTTP protocols simultaneously
 - **TCP Server**: Production-ready SPOCP protocol server (draft-hedberg-spocp-tcp-00)
   - TLS support with certificate validation
   - Multi-client connection handling
@@ -30,6 +31,12 @@ This library implements a generalized authorization service based on the SPOCP s
   - Health check endpoints (/health, /ready, /stats, /metrics)
   - Prometheus metrics export
   - Graceful shutdown with connection cleanup
+- **HTTP Server**: AuthZen Authorization API 1.0 endpoint
+  - REST API for policy evaluation (`POST /access/v1/evaluation`)
+  - Automatic AuthZen-to-SPOCP query translation
+  - Shared or standalone engine modes
+  - Request metrics and X-Request-ID tracing support
+  - See [docs/AUTHZEN.md](docs/AUTHZEN.md) for details
 - **TCP Client**: Connection pooling client library with batch operations
 - **Rule Persistence**: Load/save rules from files (text and binary formats)
 - **Type-Safe**: Strongly typed implementation in Go
@@ -55,7 +62,7 @@ go build -o spocp-client ./cmd/spocp-client
 ### Quick Server Start
 
 ```bash
-# Start server with example rules
+# Start TCP server with example rules
 ./spocpd -rules ./examples/rules -health :8080 -log info
 
 # In another terminal, query the server
@@ -71,7 +78,29 @@ curl http://localhost:8080/stats
 {"queries":{"total":1,"ok":1,"denied":0},...}
 ```
 
-See [`docs/OPERATIONS.md`](docs/OPERATIONS.md) for complete deployment and operational guide.
+### HTTP/AuthZen API Server
+
+```bash
+# Start HTTP-only server
+./spocpd -tcp=false -http -http-addr :8000 -rules ./examples/rules -log info
+
+# Query using AuthZen API
+curl -X POST http://localhost:8000/access/v1/evaluation \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subject": {"type": "user", "id": "alice@acmecorp.com"},
+    "resource": {"type": "account", "id": "123"},
+    "action": {"name": "can_read"}
+  }'
+
+# Response: {"decision": true}
+
+# Run both TCP and HTTP simultaneously (shared engine)
+./spocpd -http -http-addr :8000 -rules ./examples/rules -log info
+```
+
+See [`docs/OPERATIONS.md`](docs/OPERATIONS.md) for complete deployment guide and [`docs/AUTHZEN.md`](docs/AUTHZEN.md) for HTTP/AuthZen API details.
+
 
 ## Quick Start
 
