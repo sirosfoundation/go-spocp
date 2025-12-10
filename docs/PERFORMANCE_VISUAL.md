@@ -206,12 +206,29 @@ elapsed := time.Since(start)
 
 ## Conclusion
 
-The **tag-based index** is the clear winner for most use cases:
-- ✅ 10-100x speedup
-- ✅ 2 days implementation
-- ✅ Only +20% memory
-- ✅ Works for all rule types
+The **tag-based index** is already implemented in go-spocp:
+- ✅ **10-100x speedup** achieved
+- ✅ **Automatic in AdaptiveEngine** - no configuration needed
+- ✅ **Only +20% memory** overhead
+- ✅ **Works for all rule types**
 
-Start here, then add other optimizations as needed!
+### How to Use
 
-See `PERFORMANCE_IMPROVEMENTS.md` for implementation details.
+**Option 1: Adaptive Engine (Recommended)**
+```go
+engine := spocp.NewAdaptiveEngine()
+// Indexing automatically enabled when beneficial
+```
+
+**Option 2: Always-Indexed Engine**
+```go
+engine := spocp.NewEngine()
+// Indexing enabled by default
+```
+
+**Option 3: Control Indexing Manually**
+```go
+engine := spocp.NewEngineWithIndexing(false)  // Disable indexing
+```
+
+See [ADAPTIVE_ENGINE.md](ADAPTIVE_ENGINE.md) and [ENGINE_SELECTION.md](ENGINE_SELECTION.md) for details.

@@ -1,112 +1,139 @@
-# Quick Performance Optimization Summary
+# Performance Optimization Summary
 
-## Current State
-- **Linear search**: O(n) through all rules
-- **Zero allocations**: Excellent memory efficiency ✅
-- **Performance**: 118k queries/sec (100 rules) → 800 queries/sec (50k rules)
+## Current Implementation Status
 
-## Top 3 Optimizations (Recommended First)
+✅ **Tag-Based Indexing**: Fully implemented and production-ready
+- Available in both `Engine` (always-on) and `AdaptiveEngine` (automatic)
+- 2-5x speedup for typical workloads
+- Zero allocations during queries
+- Minimal memory overhead (~24 bytes per rule)
 
-### 1. Tag-Based Indexing (Highest Impact)
-**Expected improvement**: 10-100x faster for typical queries
-**Effort**: 1-2 days
-**Memory cost**: ~24 bytes per rule
+✅ **Adaptive Strategy**: Automatically optimizes based on ruleset characteristics
+- Thresholds: ≥50 rules, ≥5 unique tags, ≤100 avg fanout
+- No configuration required
+- See [ADAPTIVE_ENGINE.md](ADAPTIVE_ENGINE.md)
 
-Instead of checking all 10,000 rules, only check the ~100 rules with matching tag.
+✅ **File Loading & Serialization**: Efficient bulk loading
+- Text format: Version control friendly
+- Binary format: Fast loading for large rulesets
+- See [FILE_LOADING.md](FILE_LOADING.md)
 
-```go
-// Current: Check all 10,000 rules
-for _, rule := range e.rules {
-    if compare.LessPermissive(query, rule) {
-        return true
-    }
-}
+## Performance Characteristics
 
-// Optimized: Check only ~100 rules with matching tag
-if indices, exists := e.index[queryTag]; exists {
-    for _, idx := range indices {
-        if compare.LessPermissive(query, e.rules[idx]) {
-            return true
-        }
-    }
-}
-```
+| Ruleset Size | Indexed Query Time | Non-Indexed Query Time | Speedup |
+|--------------|-------------------|------------------------|---------|
+| 100 rules    | 735 ns            | 2,338 ns               | 3.2x    |
+| 1,000 rules  | 7,364 ns          | 29,047 ns              | 3.9x    |
+| 10,000 rules | 95,566 ns         | 279,023 ns             | 2.9x    |
+| 50,000 rules | 1,055,105 ns      | 1,913,802 ns           | 1.8x    |
 
-### 2. Query Result Caching (Best for Repetitive Queries)
-**Expected improvement**: Near-instant for cached queries
-**Effort**: 1 day
-**Memory cost**: Configurable (e.g., 10MB for 10k cached queries)
+See [PERFORMANCE_REPORT.md](../PERFORMANCE_REPORT.md) for complete benchmarks.
+
+## How to Use
+
+### Recommended: Use AdaptiveEngine
 
 ```go
-// Check cache first
-if result, ok := e.cache.Get(query.Canonical()); ok {
-    return result.(bool)  // Instant!
-}
+engine := spocp.NewAdaptiveEngine()
+// or
+engine := spocp.New()
 
-// Otherwise evaluate and cache
-result := e.evaluate(query)
-e.cache.Add(query.Canonical(), result)
-return result
+// Load rules from file
+engine.LoadRulesFromFile("policies.txt")
+
+// Indexing automatically enabled when beneficial
+stats := engine.Stats()
+fmt.Printf("Indexing enabled: %v\n", stats.IndexingEnabled)
 ```
 
-### 3. Comparison Algorithm Micro-optimizations
-**Expected improvement**: 10-15% faster
-**Effort**: 4-6 hours
-**Memory cost**: None
+### Alternative: Manual Control
 
-- Cache type checks to avoid repeated interface assertions
-- Short-circuit evaluation for wildcards
-- Use `bytes.HasPrefix()` for string operations
+```go
+// Always indexed (default)
+engine := spocp.NewEngine()
 
-## Implementation Priority
+// Disable indexing
+engine := spocp.NewEngineWithIndexing(false)
+```
 
-**Week 1**: Tag-based indexing
-- Implement `map[string][]int` for tag → rule indices
-- Update `AddRule()` to maintain index
-- Update `QueryElement()` to use index
-- Expected: 10-100x speedup for typical queries
+## When to Use Each Engine
 
-**Week 2**: Query caching
-- Add LRU cache with configurable size
-- Cache query results by canonical form
-- Invalidate cache on rule changes
-- Expected: Near-instant for repeated queries
+**Use AdaptiveEngine when:**
+- You want automatic optimization ✅ (most cases)
+- Ruleset size varies over time
+- You're unsure about indexing benefits
 
-**Week 3**: Micro-optimizations
-- Refactor `LessPermissive()` to cache type checks
-- Add early-exit paths
-- Optimize string comparisons
-- Expected: 10-15% overall improvement
+**Use Engine (always-indexed) when:**
+- You know you have >1000 rules
+- You want predictable performance
+- You're benchmarking
 
-## Measuring Results
+**Use NewEngineWithIndexing(false) when:**
+- Rules < 100 (minimal benefit)
+- Memory is extremely constrained
+- Benchmarking without indexing
+
+## Future Optimization Opportunities
+
+If you need even better performance (rare), consider:
+
+1. **Query Result Caching**: Near-instant for repeated queries
+   - Memory cost: ~100 bytes per cached query
+   - Best for: Repetitive authorization checks
+
+2. **Parallel Evaluation**: 2-4x speedup on multi-core systems
+   - Best for: Very large rulesets (>10,000 rules)
+   - Only helps with complex rule matching
+
+3. **Trie-Based Indexing**: 100-1000x for hierarchical paths
+   - Best for: File paths, URLs, tree structures
+   - Memory cost: ~80 bytes per trie node
+
+4. **Compiled Bytecode**: 30-50% improvement
+   - High implementation complexity
+   - Only for extreme performance requirements
+
+See [PERFORMANCE_VISUAL.md](PERFORMANCE_VISUAL.md) for visual comparisons.
+
+## Performance Measurement
+
+Use the built-in benchmarks to measure performance:
 
 ```bash
-# Before optimization
+# Run all benchmarks
+make bench
+
+# Long benchmark suite (more accurate)
+make bench-long
+
+# Compare changes
 make bench-long > before.txt
-
-# After optimization
+# ... make changes ...
 make bench-long > after.txt
-
-# Statistical comparison
 benchstat before.txt after.txt
 ```
 
-## When to Stop Optimizing
+## Interpreting Results
 
-Current performance is **already good** for many use cases:
-- ✅ <1000 rules: Excellent (39µs per query)
-- ✅ 1000-5000 rules: Good (40-155µs per query)
-- ⚠️ 5000-10000 rules: OK (155-260µs per query)
-- ❌ >10000 rules: Needs optimization (>260µs per query)
+Current indexed performance with AdaptiveEngine:
 
-**Recommendation**: Implement tag indexing if you have >1000 rules or need <10µs queries.
+- ✅ <1,000 rules: **Excellent** (735-7,364 ns per query)
+- ✅ 1,000-10,000 rules: **Good** (7-95 µs per query)
+- ✅ 10,000-50,000 rules: **Acceptable** (95-1,055 µs per query)
 
-## Advanced Optimizations (If Needed Later)
+Without indexing, larger rulesets degrade faster:
 
-Only pursue if above optimizations are insufficient:
+- ⚠️ 10,000 rules: ~279 µs per query (3x slower)
+- ❌ 50,000 rules: ~1,913 µs per query (2x slower)
 
-4. **Parallel evaluation** (2-4x for >5k rules)
-5. **Trie-based indexing** (100-1000x for hierarchical data)
-6. **Compiled rules/bytecode** (30-50% improvement, high complexity)
+**When the current implementation is sufficient:**
+- Queries complete in acceptable time for your use case
+- Memory usage is reasonable
+- AdaptiveEngine provides automatic optimization
 
-See `PERFORMANCE_IMPROVEMENTS.md` for full details.
+**When additional optimization may be needed:**
+- Queries must complete in <1µs (consider caching)
+- Processing >100,000 queries/second
+- Working with >100,000 rules
+
+See [ADAPTIVE_ENGINE.md](ADAPTIVE_ENGINE.md) for engine selection guidance.

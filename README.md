@@ -427,10 +427,11 @@ Indexing adds only **24% memory overhead** while providing significant speedup.
 **Highly selective queries** (few rules per tag) can be **100-2000x faster**!
 
 For performance details and optimization strategies, see:
-- **`INDEXING_RESULTS.md`** - Tag-based indexing implementation and results ⭐
-- **`OPTIMIZATION.md`** - Quick guide to improving performance
-- **`PERFORMANCE_IMPROVEMENTS.md`** - Detailed analysis of 9 optimization strategies
-- **`PERFORMANCE.md`** - Original benchmark results and analysis
+- **[`docs/ADAPTIVE_ENGINE.md`](docs/ADAPTIVE_ENGINE.md)** - Adaptive indexing strategies and engine selection ⭐
+- **[`docs/OPTIMIZATION_SUMMARY.md`](docs/OPTIMIZATION_SUMMARY.md)** - Performance guide and when to optimize
+- **[`INDEXING_RESULTS.md`](INDEXING_RESULTS.md)** - Tag-based indexing implementation and results
+- **[`PERFORMANCE_REPORT.md`](PERFORMANCE_REPORT.md)** - Complete benchmark results and analysis
+- **[`docs/FILE_LOADING.md`](docs/FILE_LOADING.md)** - Efficient bulk loading and serialization
 
 ## Contributing
 

@@ -141,7 +141,7 @@ func runPerformanceTest(ruleCount int, queryCount int, useWildcards bool) {
 	fmt.Printf("\n=== Performance Test: %d rules, %d queries ===\n", ruleCount, queryCount)
 
 	gen := NewRuleGenerator(42)
-	engine := spocp.NewEngine()
+	engine := spocp.NewEngine() // Uses tag-based indexing by default
 
 	// Measure rule addition time
 	fmt.Print("Generating rules... ")
@@ -216,12 +216,12 @@ func main() {
 
 	fmt.Println("\n=== Performance Summary ===")
 	fmt.Println("Engine characteristics:")
-	fmt.Println("  - Linear search through rules")
+	fmt.Println("  - Tag-based indexing enabled by default")
 	fmt.Println("  - Early termination on first match")
-	fmt.Println("  - No caching or indexing")
-	fmt.Println("\nFor better performance with large rulesets, consider:")
-	fmt.Println("  - Indexing rules by tag")
-	fmt.Println("  - Caching query results")
-	fmt.Println("  - Parallel query evaluation")
-	fmt.Println("  - Rule priority/ordering optimization")
+	fmt.Println("  - Zero allocations during queries")
+	fmt.Println("\nFor more information:")
+	fmt.Println("  - See docs/ADAPTIVE_ENGINE.md for engine selection")
+	fmt.Println("  - See docs/OPTIMIZATION_SUMMARY.md for performance tuning")
+	fmt.Println("  - Use AdaptiveEngine for automatic optimization")
+	fmt.Println("  - Run 'make bench' for detailed benchmarks")
 }
