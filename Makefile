@@ -14,6 +14,13 @@ BINARY_NAME=spocp
 COVERAGE_FILE=coverage.out
 COVERAGE_HTML=coverage.html
 
+# Binary output directory
+BIN_DIR=bin
+
+# Server binaries
+SERVER_BINARY=$(BIN_DIR)/spocpd
+CLIENT_BINARY=$(BIN_DIR)/spocp-client
+
 # Packages
 PACKAGES=$(shell $(GOCMD) list ./...)
 
@@ -22,6 +29,18 @@ all: test build ## Run tests and build
 build: ## Build the library (verify it compiles)
 	@echo "Building..."
 	$(GOBUILD) -v ./...
+
+build-server: ## Build spocpd server binary to bin/
+	@echo "Building spocpd server..."
+	@mkdir -p $(BIN_DIR)
+	$(GOBUILD) -o $(SERVER_BINARY) ./cmd/spocpd
+
+build-client: ## Build spocp-client binary to bin/
+	@echo "Building spocp-client..."
+	@mkdir -p $(BIN_DIR)
+	$(GOBUILD) -o $(CLIENT_BINARY) ./cmd/spocp-client
+
+build-tools: build-server build-client ## Build all server tools to bin/
 
 test: ## Run tests
 	@echo "Running tests..."
@@ -46,11 +65,12 @@ coverage-cli: ## Show test coverage in terminal
 	$(GOTEST) -race -coverprofile=$(COVERAGE_FILE) -covermode=atomic ./...
 	$(GOCMD) tool cover -func=$(COVERAGE_FILE)
 
-clean: ## Remove build artifacts and coverage reports
+clean: ## Remove build artifacts, coverage reports, and log files
 	@echo "Cleaning..."
 	$(GOCLEAN)
 	rm -f $(COVERAGE_FILE) $(COVERAGE_HTML)
 	rm -rf bin/
+	rm -f *.log
 
 fmt: ## Format code
 	@echo "Formatting code..."

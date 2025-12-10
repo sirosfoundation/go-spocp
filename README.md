@@ -21,18 +21,17 @@ This library implements a generalized authorization service based on the SPOCP s
   - **Regular Engine**: Manual control over indexing
   - **Adaptive Engine**: Automatically optimizes based on ruleset characteristics
 - **Tag-Based Indexing**: 2-5x performance improvement for large rulesets with diverse tags
-- **Dual Protocol Support**: Run TCP and/or HTTP protocols simultaneously
+- **Flexible Protocol Support**: TCP, HTTP, or both simultaneously
 - **TCP Server**: Production-ready SPOCP protocol server (draft-hedberg-spocp-tcp-00)
   - TLS support with certificate validation
   - Multi-client connection handling
   - Dynamic rule reloading (zero downtime)
   - PID file management
   - Configurable logging (5 levels: silent/error/warn/info/debug)
-  - Health check endpoints (/health, /ready, /stats, /metrics)
-  - Prometheus metrics export
   - Graceful shutdown with connection cleanup
-- **HTTP Server**: AuthZen Authorization API 1.0 endpoint
-  - REST API for policy evaluation (`POST /access/v1/evaluation`)
+- **HTTP Server**: Unified monitoring and optional AuthZen API
+  - Always provides: `/health`, `/ready`, `/stats`, `/metrics` endpoints
+  - Optionally enables: AuthZen Authorization API 1.0 (`POST /access/v1/evaluation`)
   - Automatic AuthZen-to-SPOCP query translation
   - Shared or standalone engine modes
   - Request metrics and X-Request-ID tracing support
@@ -51,38 +50,38 @@ go get github.com/sirosfoundation/go-spocp
 ### Building the Server Tools
 
 ```bash
-# Build server and client
-make build
+# Build server and client to bin/
+make build-tools
 
 # Or build individually
-go build -o spocpd ./cmd/spocpd
-go build -o spocp-client ./cmd/spocp-client
+make build-server  # Creates bin/spocpd
+make build-client  # Creates bin/spocp-client
 ```
 
 ### Quick Server Start
 
 ```bash
-# Start TCP server with example rules
-./spocpd -rules ./examples/rules -health :8080 -log info
+# Start TCP server with HTTP monitoring
+bin/spocpd -tcp -tcp-addr :6000 -http-addr :8000 -rules ./examples/rules -log info
 
-# In another terminal, query the server
-./spocp-client -addr localhost:6000
+# In another terminal, query via TCP
+bin/spocp-client -addr localhost:6000
 > query (http (page index.html)(action GET)(user alice))
 ✓ OK - Query matched
 
-# Check server health
-curl http://localhost:8080/health
+# Check server health and stats via HTTP (always available)
+curl http://localhost:8000/health
 {"status":"ok"}
 
-curl http://localhost:8080/stats
-{"queries":{"total":1,"ok":1,"denied":0},...}
+curl http://localhost:8000/stats | jq .
+{"queries": {"total": 1, "ok": 1, "denied": 0}, ...}
 ```
 
 ### HTTP/AuthZen API Server
 
 ```bash
-# Start HTTP-only server
-./spocpd -tcp=false -http -http-addr :8000 -rules ./examples/rules -log info
+# HTTP-only with AuthZen API enabled
+bin/spocpd -authzen -http-addr :8000 -rules ./examples/rules -log info
 
 # Query using AuthZen API
 curl -X POST http://localhost:8000/access/v1/evaluation \
@@ -95,8 +94,14 @@ curl -X POST http://localhost:8000/access/v1/evaluation \
 
 # Response: {"decision": true}
 
-# Run both TCP and HTTP simultaneously (shared engine)
-./spocpd -http -http-addr :8000 -rules ./examples/rules -log info
+# Health and stats endpoints are always available on HTTP server
+curl http://localhost:8000/health   # {"status":"ok"}
+curl http://localhost:8000/ready    # {"status":"ready"}
+curl http://localhost:8000/stats    # JSON statistics
+curl http://localhost:8000/metrics  # Prometheus metrics
+
+# Run both TCP and HTTP/AuthZen (shared engine)
+bin/spocpd -tcp -tcp-addr :6000 -authzen -http-addr :8000 -rules ./examples/rules -log info
 ```
 
 See [`docs/OPERATIONS.md`](docs/OPERATIONS.md) for complete deployment guide and [`docs/AUTHZEN.md`](docs/AUTHZEN.md) for HTTP/AuthZen API details.

@@ -5,8 +5,10 @@ The SPOCP server now supports the [AuthZen Authorization API 1.0](https://openid
 ## Features
 
 - **Standards-compliant**: Implements AuthZen Authorization API 1.0 draft specification
-- **Flexible deployment**: Run TCP-only, HTTP-only, or both simultaneously
-- **Shared engine**: Both TCP and HTTP endpoints can share the same rule engine
+- **Flexible deployment**: Run TCP-only with monitoring, AuthZen-only, or both simultaneously
+- **Unified monitoring**: HTTP server always provides health/ready/stats/metrics endpoints
+- **Optional AuthZen**: AuthZen API can be enabled independently via `-authzen` flag
+- **Shared engine**: Both TCP and HTTP protocols can share the same rule engine
 - **JSON-based**: RESTful HTTP API with JSON request/response format
 - **Automatic mapping**: AuthZen requests are automatically translated to SPOCP S-expressions
 
@@ -146,41 +148,55 @@ curl -X POST http://localhost:8000/access/v1/evaluation \
 
 ## Running the Server
 
-### Both TCP and HTTP (default)
+SPOCP provides flexible deployment options. The HTTP server always provides monitoring endpoints (`/health`, `/ready`, `/stats`, `/metrics`) and can optionally serve the AuthZen API.
+
+### AuthZen-only (HTTP with monitoring)
+
+Enable AuthZen API on the HTTP server:
 
 ```bash
-./spocpd -rules ./examples/rules -http -http-addr :8000
+./spocpd -authzen -http-addr :8000 -rules ./examples/rules
 ```
 
 This starts:
-- TCP server on `:6000` (default)
-- HTTP/AuthZen server on `:8000`
+- HTTP server on `:8000` with monitoring endpoints and AuthZen API
 
-### HTTP-only
-
-```bash
-./spocpd -tcp=false -http -http-addr :8000 -rules ./examples/rules
-```
-
-### TCP-only (default)
+### Both TCP and AuthZen
 
 ```bash
-./spocpd -rules ./examples/rules
+./spocpd -tcp -tcp-addr :6000 -authzen -http-addr :8000 -rules ./examples/rules
 ```
+
+This starts:
+- TCP server on `:6000` (SPOCP protocol)
+- HTTP server on `:8000` with monitoring endpoints and AuthZen API
+- Both protocols share the same rule engine
+
+### TCP-only (with HTTP monitoring)
+
+```bash
+./spocpd -tcp -tcp-addr :6000 -http-addr :8000 -rules ./examples/rules
+```
+
+This starts:
+- TCP server on `:6000` (SPOCP protocol)
+- HTTP server on `:8000` with monitoring endpoints only (no AuthZen API)
 
 ### With All Options
 
 ```bash
 ./spocpd \
-  -rules ./examples/rules \
-  -addr :6000 \
-  -http \
+  -tcp \
+  -tcp-addr :6000 \
+  -authzen \
   -http-addr :8000 \
-  -health :8080 \
+  -rules ./examples/rules \
   -pid /var/run/spocpd.pid \
   -log info \
   -reload 5m
 ```
+
+Note: At least one of `-tcp` or `-authzen` must be specified to enable a protocol endpoint.
 
 ## AuthZen to SPOCP Mapping
 
@@ -298,18 +314,46 @@ The HTTP/AuthZen endpoint:
 
 ## Monitoring
 
-When the health check endpoint is enabled (`-health` flag), metrics for the HTTP server are available at `/stats`:
+The HTTP server always provides monitoring endpoints regardless of whether AuthZen is enabled:
 
 ```bash
-curl http://localhost:8080/stats | jq '.authzen'
+# Health check
+curl http://localhost:8000/health
+
+# Readiness check (checks if rules are loaded)
+curl http://localhost:8000/ready
+
+# Statistics in JSON format
+curl http://localhost:8000/stats | jq
+
+# Prometheus-style metrics
+curl http://localhost:8000/metrics
 ```
+
+The `/stats` endpoint returns comprehensive metrics for all enabled protocols:
 
 ```json
 {
-  "requests_total": 1234,
-  "requests_ok": 1100,
-  "requests_deny": 134,
-  "errors": 0
+  "requests": {
+    "tcp": {
+      "total": 5678,
+      "ok": 5000,
+      "deny": 678
+    },
+    "authzen": {
+      "total": 1234,
+      "ok": 1100,
+      "deny": 134
+    }
+  },
+  "rules": {
+    "total": 11,
+    "loaded": "2024-01-15T10:30:00Z"
+  },
+  "indexing": {
+    "enabled": true,
+    "entries": 42
+  }
 }
 ```
 
