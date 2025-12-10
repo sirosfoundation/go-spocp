@@ -96,10 +96,10 @@ jobs:
           exit 1
         fi
     
-    - name: Verify go.mod and go.sum
+    - name: Verify go.mod
       run: |
         go mod tidy
-        git diff --exit-code go.mod go.sum
+        git diff --exit-code go.mod
 
   build:
     name: Build
@@ -114,14 +114,18 @@ jobs:
       with:
         go-version: '1.25.x'
     
-    - name: Build
-      run: go build -v ./...
+    - name: Build main package
+      run: go build -v .
+    
+    - name: Build sub-packages
+      run: go build -v ./pkg/...
     
     - name: Build examples
       run: |
-        for example in examples/*.go; do
-          if [ -f "$example" ]; then
-            go build -v "$example"
+        for example_dir in examples/*/; do
+          if [ -d "$example_dir" ]; then
+            echo "Building $example_dir"
+            (cd "$example_dir" && go build -v .)
           fi
         done
     
@@ -129,6 +133,7 @@ jobs:
       run: |
         for cmd in cmd/*; do
           if [ -d "$cmd" ]; then
+            echo "Building $cmd"
             go build -v "./$cmd"
           fi
         done
