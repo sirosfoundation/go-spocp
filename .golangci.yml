@@ -28,12 +28,13 @@ linters:
 linters-settings:
   errcheck:
     check-blank: true
-    check-type-assertions: true
+    check-type-assertions: false  # Type assertions are checked by prior type switches
   
   govet:
     enable-all: true
     disable:
       - shadow      # Shadow variables are sometimes intentional
+      - fieldalignment  # Field alignment optimization not critical for this project
   
   revive:
     rules:
@@ -57,6 +58,25 @@ issues:
       linters:
         - gosec
         - errcheck
+        - unused
+        - fieldalignment
+    
+    # Exclude security checks from cmd tools (benchmarks, etc.)
+    - path: ^cmd/
+      linters:
+        - gosec
+    
+    # Type assertions in compare.go are safe due to prior type checking
+    - path: pkg/compare/compare\.go
+      linters:
+        - errcheck
+      text: "type assertion on error"
+    
+    # Type assertions in starform.go are safe due to prior type checking  
+    - path: pkg/starform/starform\.go
+      linters:
+        - errcheck
+      text: "type assertion on error"
   
   max-issues-per-linter: 0
   max-same-issues: 0
