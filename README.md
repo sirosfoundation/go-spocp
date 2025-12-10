@@ -6,7 +6,7 @@
 [![codecov](https://codecov.io/gh/sirosfoundation/go-spocp/branch/main/graph/badge.svg)](https://codecov.io/gh/sirosfoundation/go-spocp)
 [![License](https://img.shields.io/badge/License-BSD_2--Clause-blue.svg)](https://opensource.org/licenses/BSD-2-Clause)
 
-A Go implementation of the SPOCP (Simple Policy Control Protocol) authorization engine based on restricted S-expressions.
+A Go implementation of the SPOCP (Simple Policy Control Protocol) authorization engine based on restricted S-expressions. SPOCP was originally the brain-child of Roland Hedberg of Umeå University, Google and Sunet and this implementation is dedicated to his long service to the open source and standards community.
 
 ## Overview
 
@@ -21,6 +21,17 @@ This library implements a generalized authorization service based on the SPOCP s
   - **Regular Engine**: Manual control over indexing
   - **Adaptive Engine**: Automatically optimizes based on ruleset characteristics
 - **Tag-Based Indexing**: 2-5x performance improvement for large rulesets with diverse tags
+- **TCP Server**: Production-ready SPOCP protocol server (draft-hedberg-spocp-tcp-00)
+  - TLS support with certificate validation
+  - Multi-client connection handling
+  - Dynamic rule reloading (zero downtime)
+  - PID file management
+  - Configurable logging (5 levels: silent/error/warn/info/debug)
+  - Health check endpoints (/health, /ready, /stats, /metrics)
+  - Prometheus metrics export
+  - Graceful shutdown with connection cleanup
+- **TCP Client**: Connection pooling client library with batch operations
+- **Rule Persistence**: Load/save rules from files (text and binary formats)
 - **Type-Safe**: Strongly typed implementation in Go
 - **Well-Tested**: Comprehensive test suite (>96% coverage) based on specification examples
 
@@ -29,6 +40,38 @@ This library implements a generalized authorization service based on the SPOCP s
 ```bash
 go get github.com/sirosfoundation/go-spocp
 ```
+
+### Building the Server Tools
+
+```bash
+# Build server and client
+make build
+
+# Or build individually
+go build -o spocpd ./cmd/spocpd
+go build -o spocp-client ./cmd/spocp-client
+```
+
+### Quick Server Start
+
+```bash
+# Start server with example rules
+./spocpd -rules ./examples/rules -health :8080 -log info
+
+# In another terminal, query the server
+./spocp-client -addr localhost:6000
+> query (http (page index.html)(action GET)(user alice))
+✓ OK - Query matched
+
+# Check server health
+curl http://localhost:8080/health
+{"status":"ok"}
+
+curl http://localhost:8080/stats
+{"queries":{"total":1,"ok":1,"denied":0},...}
+```
+
+See [`docs/OPERATIONS.md`](docs/OPERATIONS.md) for complete deployment and operational guide.
 
 ## Quick Start
 
@@ -427,11 +470,14 @@ Indexing adds only **24% memory overhead** while providing significant speedup.
 **Highly selective queries** (few rules per tag) can be **100-2000x faster**!
 
 For performance details and optimization strategies, see:
-- **[`docs/ADAPTIVE_ENGINE.md`](docs/ADAPTIVE_ENGINE.md)** - Adaptive indexing strategies and engine selection ⭐
+
+- **[`docs/OPERATIONS.md`](docs/OPERATIONS.md)** - Complete production deployment and operations guide ⭐
+- **[`docs/TCP_SERVER.md`](docs/TCP_SERVER.md)** - SPOCP TCP protocol server and client documentation
+- **[`docs/ADAPTIVE_ENGINE.md`](docs/ADAPTIVE_ENGINE.md)** - Adaptive indexing strategies and engine selection
 - **[`docs/OPTIMIZATION_SUMMARY.md`](docs/OPTIMIZATION_SUMMARY.md)** - Performance guide and when to optimize
+- **[`docs/FILE_LOADING.md`](docs/FILE_LOADING.md)** - Efficient bulk loading and serialization
 - **[`INDEXING_RESULTS.md`](INDEXING_RESULTS.md)** - Tag-based indexing implementation and results
 - **[`PERFORMANCE_REPORT.md`](PERFORMANCE_REPORT.md)** - Complete benchmark results and analysis
-- **[`docs/FILE_LOADING.md`](docs/FILE_LOADING.md)** - Efficient bulk loading and serialization
 
 ## Contributing
 

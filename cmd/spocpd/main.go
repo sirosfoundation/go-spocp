@@ -1,5 +1,4 @@
-// SPOCP server - TCP server with dynamic rule loadingpackage spocpd
-
+// SPOCP server - TCP server with dynamic rule loading
 package main
 
 import (
@@ -21,6 +20,9 @@ func main() {
 		tlsCert        = flag.String("tls-cert", "", "Path to TLS certificate file (optional)")
 		tlsKey         = flag.String("tls-key", "", "Path to TLS private key file (optional)")
 		reloadInterval = flag.Duration("reload", 0, "Auto-reload interval (e.g., 5m, 1h) - 0 to disable")
+		pidFile        = flag.String("pid", "", "PID file path (optional)")
+		healthAddr     = flag.String("health", "", "Health check address (e.g., :8080, optional)")
+		logLevel       = flag.String("log", "error", "Log level: silent, error, warn, info, debug")
 	)
 
 	flag.Parse()
@@ -31,6 +33,26 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
+
+	// Parse log level
+	var level server.LogLevel
+	switch *logLevel {
+	case "silent":
+		level = server.LogLevelSilent
+	case "error":
+		level = server.LogLevelError
+	case "warn":
+		level = server.LogLevelWarn
+	case "info":
+		level = server.LogLevelInfo
+	case "debug":
+		level = server.LogLevelDebug
+	default:
+		log.Fatalf("Invalid log level: %s (must be: silent, error, warn, info, debug)", *logLevel)
+	}
+
+	// Setup logger
+	logger := log.New(os.Stdout, "[SPOCP] ", log.LstdFlags)
 
 	// Setup TLS if certificates are provided
 	var tlsConfig *tls.Config
@@ -44,7 +66,9 @@ func main() {
 			Certificates: []tls.Certificate{cert},
 			MinVersion:   tls.VersionTLS12,
 		}
-		log.Println("TLS enabled")
+		if level >= server.LogLevelInfo {
+			logger.Println("[INFO] TLS enabled")
+		}
 	} else if *tlsCert != "" || *tlsKey != "" {
 		log.Fatal("Both -tls-cert and -tls-key must be specified for TLS")
 	}
@@ -55,6 +79,10 @@ func main() {
 		RulesDir:       *rulesDir,
 		TLSConfig:      tlsConfig,
 		ReloadInterval: *reloadInterval,
+		PidFile:        *pidFile,
+		HealthAddr:     *healthAddr,
+		Logger:         logger,
+		LogLevel:       level,
 	}
 
 	srv, err := server.NewServer(config)
@@ -68,16 +96,27 @@ func main() {
 
 	go func() {
 		<-sigChan
-		log.Println("Received shutdown signal")
+		if level >= server.LogLevelInfo {
+			logger.Println("[INFO] Received shutdown signal")
+		}
 		srv.Close()
 	}()
 
 	// Start server
-	log.Printf("SPOCP Server starting...")
-	log.Printf("  Address: %s", *address)
-	log.Printf("  Rules directory: %s", *rulesDir)
-	if *reloadInterval > 0 {
-		log.Printf("  Auto-reload: every %v", *reloadInterval)
+	if level >= server.LogLevelInfo {
+		logger.Printf("[INFO] SPOCP Server starting...")
+		logger.Printf("[INFO]   Address: %s", *address)
+		logger.Printf("[INFO]   Rules directory: %s", *rulesDir)
+		if *reloadInterval > 0 {
+			logger.Printf("[INFO]   Auto-reload: every %v", *reloadInterval)
+		}
+		if *pidFile != "" {
+			logger.Printf("[INFO]   PID file: %s", *pidFile)
+		}
+		if *healthAddr != "" {
+			logger.Printf("[INFO]   Health check: %s", *healthAddr)
+		}
+		logger.Printf("[INFO]   Log level: %s", *logLevel)
 	}
 
 	if err := srv.Serve(); err != nil {
