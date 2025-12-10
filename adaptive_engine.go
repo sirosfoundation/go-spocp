@@ -1,6 +1,9 @@
 package spocp
 
 import (
+	"fmt"
+
+	"github.com/sirosfoundation/go-spocp/pkg/persist"
 	"github.com/sirosfoundation/go-spocp/pkg/sexp"
 )
 
@@ -165,4 +168,50 @@ func (ae *AdaptiveEngine) GetIndexStats() map[string]any {
 func (ae *AdaptiveEngine) ForceIndexing(enabled bool) {
 	ae.engine.indexEnabled = enabled
 	ae.stats.IndexingEnabled = enabled
+}
+
+// LoadRulesFromFile loads rules from a file into the adaptive engine
+func (ae *AdaptiveEngine) LoadRulesFromFile(filename string) error {
+	rules, err := persist.LoadFileToSlice(filename)
+	if err != nil {
+		return fmt.Errorf("failed to load rules: %w", err)
+	}
+
+	for _, rule := range rules {
+		ae.AddRuleElement(rule)
+	}
+
+	return nil
+}
+
+// LoadRulesFromFileWithOptions loads rules with custom options
+func (ae *AdaptiveEngine) LoadRulesFromFileWithOptions(filename string, opts persist.LoadOptions) error {
+	rules, err := persist.LoadFile(filename, opts)
+	if err != nil {
+		return fmt.Errorf("failed to load rules: %w", err)
+	}
+
+	for _, rule := range rules {
+		ae.AddRuleElement(rule)
+	}
+
+	return nil
+}
+
+// SaveRulesToFile saves all rules from the engine to a file
+func (ae *AdaptiveEngine) SaveRulesToFile(filename string, format persist.FileFormat) error {
+	return ae.engine.SaveRulesToFile(filename, format)
+}
+
+// ExportRules returns all rules as a slice for serialization
+func (ae *AdaptiveEngine) ExportRules() []sexp.Element {
+	return ae.engine.ExportRules()
+}
+
+// ImportRules replaces all rules with the provided slice
+func (ae *AdaptiveEngine) ImportRules(rules []sexp.Element) {
+	ae.Clear()
+	for _, rule := range rules {
+		ae.AddRuleElement(rule)
+	}
 }
