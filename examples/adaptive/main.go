@@ -8,7 +8,8 @@ import (
 )
 
 func main() {
-	fmt.Println("=== SPOCP Adaptive Engine Demo ===\n")
+	fmt.Println("=== SPOCP Adaptive Engine Demo ===")
+	fmt.Println()
 
 	// Create an adaptive engine - it automatically decides when to use indexing
 	engine := spocp.NewAdaptiveEngine()
