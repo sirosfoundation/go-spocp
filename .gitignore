@@ -6,6 +6,11 @@
 *.dylib
 bin/
 
+# Example binaries
+examples/basic/basic
+examples/adaptive/adaptive
+examples/indexed/indexed
+
 # Test binary, built with `go test -c`
 *.test
 
