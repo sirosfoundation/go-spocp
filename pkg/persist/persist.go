@@ -207,8 +207,11 @@ func saveBinary(w io.Writer, rules []sexp.Element) error {
 		return err
 	}
 
-	// Write rule count
-	if err := binary.Write(w, binary.LittleEndian, uint32(len(rules))); err != nil {
+	// Write rule count (check bounds)
+	if len(rules) > int(^uint32(0)) {
+		return fmt.Errorf("too many rules: %d exceeds uint32 max", len(rules))
+	}
+	if err := binary.Write(w, binary.LittleEndian, uint32(len(rules))); err != nil { //nolint:gosec // bounds checked above
 		return err
 	}
 
@@ -217,8 +220,11 @@ func saveBinary(w io.Writer, rules []sexp.Element) error {
 		canonical := rule.String()
 		data := []byte(canonical)
 
-		// Write length
-		if err := binary.Write(w, binary.LittleEndian, uint32(len(data))); err != nil {
+		// Write length (check bounds)
+		if len(data) > int(^uint32(0)) {
+			return fmt.Errorf("rule data too large: %d exceeds uint32 max", len(data))
+		}
+		if err := binary.Write(w, binary.LittleEndian, uint32(len(data))); err != nil { //nolint:gosec // bounds checked above
 			return err
 		}
 
@@ -291,8 +297,11 @@ func SerializeRule(rule sexp.Element) ([]byte, error) {
 	canonical := rule.String()
 	data := []byte(canonical)
 
-	// Write length
-	if err := binary.Write(&buf, binary.LittleEndian, uint32(len(data))); err != nil {
+	// Write length (check bounds)
+	if len(data) > int(^uint32(0)) {
+		return nil, fmt.Errorf("rule data too large: %d exceeds uint32 max", len(data))
+	}
+	if err := binary.Write(&buf, binary.LittleEndian, uint32(len(data))); err != nil { //nolint:gosec // bounds checked above
 		return nil, err
 	}
 

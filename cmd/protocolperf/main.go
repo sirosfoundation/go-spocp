@@ -10,6 +10,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -289,7 +290,7 @@ func runTCPBenchmark(engine *spocp.Engine, testCases []TestCase, port, warmup, c
 	serverReady := make(chan struct{})
 	go func() {
 		close(serverReady)
-		tcpServer.Serve()
+		_ = tcpServer.Serve() //nolint:errcheck // benchmark server
 	}()
 	<-serverReady
 	time.Sleep(50 * time.Millisecond) // Give server time to start
@@ -312,7 +313,7 @@ func runTCPBenchmark(engine *spocp.Engine, testCases []TestCase, port, warmup, c
 
 		// Warmup
 		for i := 0; i < warmup; i++ {
-			cli.Query(testCases[i].Query)
+			_, _ = cli.Query(testCases[i].Query) //nolint:errcheck // warmup
 		}
 
 		start := time.Now()
@@ -454,7 +455,7 @@ func runHTTPBenchmark(engine *spocp.Engine, testCases []TestCase, port, warmup, 
 
 		// Warmup
 		for i := 0; i < warmup; i++ {
-			sendAuthZenRequest(httpClient, endpoint, testCases[i].AuthZenReq)
+			_, _ = sendAuthZenRequest(httpClient, endpoint, testCases[i].AuthZenReq) //nolint:errcheck // warmup
 		}
 
 		start := time.Now()
@@ -537,7 +538,13 @@ func sendAuthZenRequest(client *http.Client, endpoint string, req authzen.Evalua
 		return false, err
 	}
 
-	resp, err := client.Post(endpoint, "application/json", bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(context.Background(), http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return false, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(httpReq)
 	if err != nil {
 		return false, err
 	}

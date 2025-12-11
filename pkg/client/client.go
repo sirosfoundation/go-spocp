@@ -1,5 +1,4 @@
-// Package client implements a SPOCP TCP client with TLS support.package client
-
+// Package client implements a SPOCP TCP client with TLS support.
 package client
 
 import (
@@ -86,10 +85,10 @@ func (c *Client) Close() error {
 	}
 
 	// Set a short timeout for logout
-	c.conn.SetWriteDeadline(time.Now().Add(1 * time.Second))
+	_ = c.conn.SetWriteDeadline(time.Now().Add(1 * time.Second)) //nolint:errcheck // best-effort logout
 	encoded := protocol.EncodeMessage(msg)
-	_, _ = c.writer.WriteString(encoded) // Ignore errors
-	_ = c.writer.Flush()                 // Ignore errors
+	_, _ = c.writer.WriteString(encoded) //nolint:errcheck // best-effort logout
+	_ = c.writer.Flush()                 //nolint:errcheck // best-effort logout
 
 	return nil
 }
@@ -203,7 +202,7 @@ func (c *Client) sendMessage(msg *protocol.Message) (*protocol.Response, error) 
 	}
 
 	// Set read deadline
-	c.conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+	_ = c.conn.SetReadDeadline(time.Now().Add(30 * time.Second)) //nolint:errcheck // non-critical timeout setting
 
 	// Read response
 	resp, err := protocol.DecodeResponse(c.reader)

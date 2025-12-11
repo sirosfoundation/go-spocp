@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net"
@@ -126,8 +127,14 @@ func TestGetEngineMutex(t *testing.T) {
 		t.Error("Expected non-nil mutex")
 	}
 
-	// Test that mutex is usable
+	// Test that mutex is usable - verify engine access under lock
 	mu.RLock()
+	engine := srv.GetEngine()
+	if engine == nil {
+		mu.RUnlock()
+		t.Error("Expected non-nil engine under lock")
+		return
+	}
 	mu.RUnlock()
 }
 
@@ -588,7 +595,11 @@ func TestHealthCheckStart(t *testing.T) {
 
 	// Make a request to health endpoint
 	healthAddr := srv.healthListener.Addr().String()
-	resp, err := http.Get("http://" + healthAddr + "/health")
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://"+healthAddr+"/health", nil)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("Failed to get health: %v", err)
 	}

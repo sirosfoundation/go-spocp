@@ -508,12 +508,6 @@ func (hs *HTTPServer) logInfo(format string, v ...interface{}) {
 	}
 }
 
-func (hs *HTTPServer) logWarn(format string, v ...interface{}) {
-	if hs.logLevel >= server.LogLevelWarn {
-		hs.logger.Printf("[WARN] "+format, v...)
-	}
-}
-
 func (hs *HTTPServer) logError(format string, v ...interface{}) {
 	if hs.logLevel >= server.LogLevelError {
 		hs.logger.Printf("[ERROR] "+format, v...)

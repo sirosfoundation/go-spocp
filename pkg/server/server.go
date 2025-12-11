@@ -266,7 +266,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 		}
 
 		// Set read deadline
-		conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
+		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Minute)) //nolint:errcheck // non-critical timeout setting
 
 		// Read message
 		msg, err := protocol.DecodeMessage(reader)
@@ -276,7 +276,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 				return
 			}
 			s.logError("Error reading from %s: %v", remoteAddr, err)
-			s.sendResponse(writer, &protocol.Response{
+			_ = s.sendResponse(writer, &protocol.Response{ //nolint:errcheck // best-effort error response
 				Code:    protocol.CodeError,
 				Message: "Protocol error",
 			})
@@ -520,7 +520,7 @@ func (s *Server) writePidFile() error {
 
 	// Write atomically
 	tmpFile := s.pidFile + ".tmp"
-	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(tmpFile, []byte(content), 0600); err != nil {
 		return fmt.Errorf("failed to write temp PID file: %w", err)
 	}
 
@@ -595,7 +595,7 @@ func (s *Server) startHealthCheck() error {
 		<-s.ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		srv.Shutdown(shutdownCtx)
+		_ = srv.Shutdown(shutdownCtx) //nolint:errcheck // best-effort graceful shutdown
 	}()
 
 	return nil
