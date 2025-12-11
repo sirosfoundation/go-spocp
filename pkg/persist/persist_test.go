@@ -375,3 +375,203 @@ func BenchmarkLoadBinary(b *testing.B) {
 		LoadFile(filename, LoadOptions{Format: FormatBinary})
 	}
 }
+
+// TestSaveLoadAdvanced tests the advanced/human-readable format
+func TestSaveLoadAdvanced(t *testing.T) {
+	tmpDir := t.TempDir()
+	filename := filepath.Join(tmpDir, "rules_advanced.txt")
+
+	rules := []sexp.Element{
+		sexp.NewList("http", sexp.NewAtom("GET")),
+		sexp.NewList("file",
+			sexp.NewList("path", sexp.NewAtom("test.txt")),
+		),
+	}
+
+	// Save in advanced format
+	if err := SaveFile(filename, rules, FormatAdvanced); err != nil {
+		t.Fatalf("SaveFile (advanced) failed: %v", err)
+	}
+
+	// Verify file content is human-readable
+	content, err := os.ReadFile(filename)
+	if err != nil {
+		t.Fatalf("Failed to read file: %v", err)
+	}
+
+	// Advanced format should have readable structure
+	if len(content) == 0 {
+		t.Error("Expected non-empty file")
+	}
+}
+
+// TestAdvancedToCanonical tests conversion from advanced to canonical
+func TestAdvancedToCanonical(t *testing.T) {
+	tests := []struct {
+		name     string
+		advanced string
+		want     string
+	}{
+		{
+			name:     "simple atom",
+			advanced: "hello",
+			want:     "5:hello",
+		},
+		{
+			name:     "simple list",
+			advanced: "(http GET)",
+			want:     "(4:http3:GET)",
+		},
+		{
+			name:     "nested list",
+			advanced: "(http (action GET) (path index.html))",
+			want:     "(4:http(6:action3:GET)(4:path10:index.html))",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := advancedToCanonical(tt.advanced)
+			if got != tt.want {
+				t.Errorf("advancedToCanonical(%q) = %q, want %q", tt.advanced, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestTokenize tests the tokenizer
+func TestTokenize(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		tokens []string
+	}{
+		{
+			name:   "simple atoms",
+			input:  "http GET POST",
+			tokens: []string{"http", "GET", "POST"},
+		},
+		{
+			name:   "nested list",
+			input:  "http (action GET)",
+			tokens: []string{"http", "(action GET)"},
+		},
+		{
+			name:   "quoted string",
+			input:  `http "hello world"`,
+			tokens: []string{"http", `"hello world"`},
+		},
+		{
+			name:   "empty input",
+			input:  "",
+			tokens: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tokenize(tt.input)
+			if len(got) != len(tt.tokens) {
+				t.Errorf("tokenize(%q) returned %d tokens, want %d", tt.input, len(got), len(tt.tokens))
+				return
+			}
+			for i, token := range tt.tokens {
+				if got[i] != token {
+					t.Errorf("tokenize(%q)[%d] = %q, want %q", tt.input, i, got[i], token)
+				}
+			}
+		})
+	}
+}
+
+// TestLoadFileErrors tests error handling in LoadFile
+func TestLoadFileErrors(t *testing.T) {
+	// Non-existent file
+	_, err := LoadFile("/nonexistent/file.spoc", DefaultLoadOptions())
+	if err == nil {
+		t.Error("Expected error for non-existent file")
+	}
+}
+
+// TestSaveFileErrors tests error handling in SaveFile
+func TestSaveFileErrors(t *testing.T) {
+	rules := []sexp.Element{sexp.NewAtom("test")}
+
+	// Write to non-existent directory
+	err := SaveFile("/nonexistent/dir/rules.spoc", rules, FormatCanonical)
+	if err == nil {
+		t.Error("Expected error for non-existent directory")
+	}
+
+	// Unknown format defaults to canonical, so this should work
+	tmpDir := t.TempDir()
+	filename := filepath.Join(tmpDir, "test.spoc")
+	err = SaveFile(filename, rules, FileFormat(99))
+	if err != nil {
+		t.Errorf("Unknown format should default to canonical: %v", err)
+	}
+}
+
+// TestSerializeDeserializeRuleAdditional tests more rule serialization cases
+func TestSerializeDeserializeRuleAdditional(t *testing.T) {
+	rules := []sexp.Element{
+		sexp.NewAtom("simple"),
+		sexp.NewList("http", sexp.NewAtom("GET")),
+		sexp.NewList("complex",
+			sexp.NewList("nested", sexp.NewAtom("value")),
+			sexp.NewList("another", sexp.NewAtom("value2")),
+		),
+	}
+
+	for _, rule := range rules {
+		data, err := SerializeRule(rule)
+		if err != nil {
+			t.Fatalf("SerializeRule failed: %v", err)
+		}
+
+		loaded, err := DeserializeRule(data)
+		if err != nil {
+			t.Fatalf("DeserializeRule failed: %v", err)
+		}
+
+		if rule.String() != loaded.String() {
+			t.Errorf("Round-trip mismatch: %s vs %s", rule.String(), loaded.String())
+		}
+	}
+}
+
+// TestDeserializeRuleErrors tests error handling in DeserializeRule
+func TestDeserializeRuleErrors(t *testing.T) {
+	// Empty data
+	_, err := DeserializeRule([]byte{})
+	if err == nil {
+		t.Error("Expected error for empty data")
+	}
+
+	// Invalid magic
+	_, err = DeserializeRule([]byte{0x00, 0x00, 0x00, 0x00})
+	if err == nil {
+		t.Error("Expected error for invalid magic")
+	}
+}
+
+// TestLoadBinaryErrors tests error handling in loadBinary
+func TestLoadBinaryErrors(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Invalid magic
+	badMagic := filepath.Join(tmpDir, "bad_magic.spocp")
+	os.WriteFile(badMagic, []byte("WRONG"), 0644)
+	_, err := LoadFile(badMagic, LoadOptions{Format: FormatBinary})
+	if err == nil {
+		t.Error("Expected error for bad magic")
+	}
+
+	// Truncated file
+	truncated := filepath.Join(tmpDir, "truncated.spocp")
+	os.WriteFile(truncated, []byte("SPOCP\x01"), 0644) // Just magic and version
+	_, err = LoadFile(truncated, LoadOptions{Format: FormatBinary})
+	if err == nil {
+		t.Error("Expected error for truncated file")
+	}
+}

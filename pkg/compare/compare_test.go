@@ -333,3 +333,312 @@ func TestListOrderMatters(t *testing.T) {
 		t.Error("Order matters in nested lists too")
 	}
 }
+
+// Tests for compareRanges function
+func TestCompareRanges(t *testing.T) {
+	tests := []struct {
+		name     string
+		s        *starform.Range
+		tRange   *starform.Range
+		expected bool
+	}{
+		{
+			name: "equal ranges",
+			s: &starform.Range{
+				RangeType:  starform.RangeNumeric,
+				LowerBound: &starform.RangeBound{Op: starform.OpGE, Value: "10"},
+				UpperBound: &starform.RangeBound{Op: starform.OpLE, Value: "15"},
+			},
+			tRange: &starform.Range{
+				RangeType:  starform.RangeNumeric,
+				LowerBound: &starform.RangeBound{Op: starform.OpGE, Value: "10"},
+				UpperBound: &starform.RangeBound{Op: starform.OpLE, Value: "15"},
+			},
+			expected: true,
+		},
+		{
+			name: "different range types",
+			s: &starform.Range{
+				RangeType:  starform.RangeNumeric,
+				LowerBound: &starform.RangeBound{Op: starform.OpGE, Value: "10"},
+			},
+			tRange: &starform.Range{
+				RangeType:  starform.RangeAlpha,
+				LowerBound: &starform.RangeBound{Op: starform.OpGE, Value: "10"},
+			},
+			expected: false,
+		},
+		{
+			name: "T has lower bound, S doesn't - S NOT <= T",
+			s: &starform.Range{
+				RangeType:  starform.RangeNumeric,
+				UpperBound: &starform.RangeBound{Op: starform.OpLE, Value: "20"},
+			},
+			tRange: &starform.Range{
+				RangeType:  starform.RangeNumeric,
+				LowerBound: &starform.RangeBound{Op: starform.OpGE, Value: "10"},
+			},
+			expected: false,
+		},
+		{
+			name: "T has upper bound, S doesn't - S NOT <= T",
+			s: &starform.Range{
+				RangeType:  starform.RangeNumeric,
+				LowerBound: &starform.RangeBound{Op: starform.OpGE, Value: "5"},
+			},
+			tRange: &starform.Range{
+				RangeType:  starform.RangeNumeric,
+				UpperBound: &starform.RangeBound{Op: starform.OpLE, Value: "15"},
+			},
+			expected: false,
+		},
+		{
+			name: "narrower upper bound fails",
+			s: &starform.Range{
+				RangeType:  starform.RangeAlpha,
+				LowerBound: &starform.RangeBound{Op: starform.OpGE, Value: "c"},
+				UpperBound: &starform.RangeBound{Op: starform.OpLE, Value: "z"},
+			},
+			tRange: &starform.Range{
+				RangeType:  starform.RangeAlpha,
+				LowerBound: &starform.RangeBound{Op: starform.OpGE, Value: "c"},
+				UpperBound: &starform.RangeBound{Op: starform.OpLE, Value: "m"},
+			},
+			expected: false,
+		},
+		{
+			name: "S lower bound higher than T lower bound fails",
+			s: &starform.Range{
+				RangeType:  starform.RangeAlpha,
+				LowerBound: &starform.RangeBound{Op: starform.OpGE, Value: "a"},
+			},
+			tRange: &starform.Range{
+				RangeType:  starform.RangeAlpha,
+				LowerBound: &starform.RangeBound{Op: starform.OpGE, Value: "m"},
+			},
+			expected: false,
+		},
+		{
+			name: "S within T bounds succeeds",
+			s: &starform.Range{
+				RangeType:  starform.RangeAlpha,
+				LowerBound: &starform.RangeBound{Op: starform.OpGE, Value: "m"},
+				UpperBound: &starform.RangeBound{Op: starform.OpLE, Value: "p"},
+			},
+			tRange: &starform.Range{
+				RangeType:  starform.RangeAlpha,
+				LowerBound: &starform.RangeBound{Op: starform.OpGE, Value: "a"},
+				UpperBound: &starform.RangeBound{Op: starform.OpLE, Value: "z"},
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := LessPermissive(tt.s, tt.tRange)
+			if result != tt.expected {
+				t.Errorf("LessPermissive(%v, %v) = %v, want %v",
+					tt.s.String(), tt.tRange.String(), result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestNormalize(t *testing.T) {
+	tests := []struct {
+		name  string
+		input sexp.Element
+	}{
+		{
+			name:  "atom unchanged",
+			input: sexp.NewAtom("test"),
+		},
+		{
+			name:  "list unchanged",
+			input: sexp.NewList("tag", sexp.NewAtom("value")),
+		},
+		{
+			name:  "wildcard unchanged",
+			input: &starform.Wildcard{},
+		},
+		{
+			name: "set unchanged for now",
+			input: &starform.Set{
+				Elements: []sexp.Element{
+					sexp.NewAtom("a"),
+					sexp.NewAtom("b"),
+				},
+			},
+		},
+		{
+			name:  "prefix unchanged",
+			input: &starform.Prefix{Value: "test"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := Normalize(tt.input)
+			if result == nil {
+				t.Error("Normalize() returned nil")
+			}
+		})
+	}
+}
+
+func TestWildcardComparisons(t *testing.T) {
+	wildcard := &starform.Wildcard{}
+
+	tests := []struct {
+		name     string
+		s        sexp.Element
+		t        sexp.Element
+		expected bool
+	}{
+		{
+			name:     "wildcard <= wildcard",
+			s:        wildcard,
+			t:        wildcard,
+			expected: true,
+		},
+		{
+			name:     "wildcard NOT <= atom",
+			s:        wildcard,
+			t:        sexp.NewAtom("test"),
+			expected: false,
+		},
+		{
+			name:     "wildcard NOT <= range",
+			s:        wildcard,
+			t:        &starform.Range{RangeType: starform.RangeNumeric},
+			expected: false,
+		},
+		{
+			name:     "wildcard NOT <= prefix",
+			s:        wildcard,
+			t:        &starform.Prefix{Value: "test"},
+			expected: false,
+		},
+		{
+			name:     "prefix <= wildcard",
+			s:        &starform.Prefix{Value: "test"},
+			t:        wildcard,
+			expected: true,
+		},
+		{
+			name:     "range <= wildcard",
+			s:        &starform.Range{RangeType: starform.RangeNumeric},
+			t:        wildcard,
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := LessPermissive(tt.s, tt.t)
+			if result != tt.expected {
+				t.Errorf("LessPermissive() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestSetAsSource(t *testing.T) {
+	// Rule 8: S is a set, all elements of S <= T
+	sourceSet := &starform.Set{
+		Elements: []sexp.Element{
+			sexp.NewAtom("apple"),
+			sexp.NewAtom("apricot"),
+		},
+	}
+
+	tests := []struct {
+		name     string
+		t        sexp.Element
+		expected bool
+	}{
+		{
+			name:     "set <= wildcard",
+			t:        &starform.Wildcard{},
+			expected: true,
+		},
+		{
+			name:     "set NOT <= atom (only one element matches)",
+			t:        sexp.NewAtom("apple"),
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := LessPermissive(sourceSet, tt.t)
+			if result != tt.expected {
+				t.Errorf("LessPermissive(set, %v) = %v, want %v", tt.t, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestMixedStarFormComparisons(t *testing.T) {
+	// Test comparing different star form types (that should return false)
+	tests := []struct {
+		name     string
+		s        sexp.Element
+		t        sexp.Element
+		expected bool
+	}{
+		{
+			name:     "prefix NOT <= suffix",
+			s:        &starform.Prefix{Value: "test"},
+			t:        &starform.Suffix{Value: "test"},
+			expected: false,
+		},
+		{
+			name:     "suffix NOT <= prefix",
+			s:        &starform.Suffix{Value: "test"},
+			t:        &starform.Prefix{Value: "test"},
+			expected: false,
+		},
+		{
+			name:     "range NOT <= prefix",
+			s:        &starform.Range{RangeType: starform.RangeNumeric},
+			t:        &starform.Prefix{Value: "test"},
+			expected: false,
+		},
+		{
+			name:     "prefix NOT <= range",
+			s:        &starform.Prefix{Value: "10"},
+			t:        &starform.Range{RangeType: starform.RangeNumeric},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := LessPermissive(tt.s, tt.t)
+			if result != tt.expected {
+				t.Errorf("LessPermissive() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestListWithDifferentTags(t *testing.T) {
+	s := sexp.NewList("apple", sexp.NewAtom("red"))
+	tList := sexp.NewList("orange", sexp.NewAtom("red"))
+
+	if LessPermissive(s, tList) {
+		t.Error("Lists with different tags should not be comparable")
+	}
+}
+
+func TestShorterListNotLessPermissive(t *testing.T) {
+	// S has fewer elements than T
+	s := sexp.NewList("fruit", sexp.NewAtom("apple"))
+	tList := sexp.NewList("fruit", sexp.NewAtom("apple"), sexp.NewAtom("large"))
+
+	if LessPermissive(s, tList) {
+		t.Error("Shorter list should NOT be <= longer list")
+	}
+}
