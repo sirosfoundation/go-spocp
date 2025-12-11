@@ -124,7 +124,7 @@ jobs:
     - name: Build examples
       run: |
         for example_dir in examples/*/; do
-          if [ -d "$example_dir" ]; then
+          if [ -d "$example_dir" ] && ls "$example_dir"/*.go >/dev/null 2>&1; then
             echo "Building $example_dir"
             (cd "$example_dir" && go build -v .)
           fi
