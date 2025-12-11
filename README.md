@@ -6,11 +6,13 @@
 [![codecov](https://codecov.io/gh/sirosfoundation/go-spocp/branch/main/graph/badge.svg)](https://codecov.io/gh/sirosfoundation/go-spocp)
 [![License](https://img.shields.io/badge/License-BSD_2--Clause-blue.svg)](https://opensource.org/licenses/BSD-2-Clause)
 
-A Go implementation of the SPOCP (Simple Policy Control Protocol) authorization engine based on restricted S-expressions. SPOCP was originally the brain-child of Roland Hedberg of Umeå University, Google and Sunet and this implementation is dedicated to his long service to the open source and standards community.
-
 ## Overview
 
-This library implements a generalized authorization service based on the SPOCP specification (draft-hedberg-spocp-sexp-00). It provides a policy engine that can evaluate authorization policies using restricted S-expressions without knowing the semantics of the applications it serves.
+A Go implementation of the SPOCP (Simple Policy Control Protocol) authorization engine based on restricted S-expressions. SPOCP is a lightning fast policy engine useful both as an embedded solution and as a server supporting AuthZen and a raw TCP protocol. SPOCP is orders of magnitude fast than similar policy engines.
+
+## Acknowledgement
+
+SPOCP was originally the brain-child of Roland Hedberg of Umeå University and this implementation is dedicated to his long service to the open source and standards community.
 
 ## Features
 
