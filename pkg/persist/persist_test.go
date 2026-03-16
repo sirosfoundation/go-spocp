@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/sirosfoundation/go-spocp/pkg/sexp"
+	"github.com/sirosfoundation/go-spocp/pkg/starform"
 )
 
 func TestSaveLoadCanonical(t *testing.T) {
@@ -427,6 +428,28 @@ func TestAdvancedToCanonical(t *testing.T) {
 			advanced: "(http (action GET) (path index.html))",
 			want:     "(4:http(6:action3:GET)(4:path10:index.html))",
 		},
+		// Regression: nested starform was previously flattened into atoms at
+		// the wrong nesting level by the broken advancedToCanonical pipeline.
+		{
+			name:     "nested starform range (regression)",
+			advanced: "(outer (inner (* range numeric ge 080)))",
+			want:     "(5:outer(5:inner(1:*5:range7:numeric2:ge3:080)))",
+		},
+		{
+			name:     "multiple nested starforms (facetec-scan pattern)",
+			advanced: "(facetec-scan (liveness-score (* range numeric ge 080)) (face-match-level (* range numeric ge 06)) (doc-type passport) (mrz-verified true))",
+			want:     "(12:facetec-scan(14:liveness-score(1:*5:range7:numeric2:ge3:080))(16:face-match-level(1:*5:range7:numeric2:ge2:06))(8:doc-type8:passport)(12:mrz-verified4:true))",
+		},
+		{
+			name:     "nested wildcard starform",
+			advanced: "(outer (inner (*)))",
+			want:     "(5:outer(5:inner(1:*)))",
+		},
+		{
+			name:     "flat starform range",
+			advanced: "(resource (* range numeric ge 010))",
+			want:     "(8:resource(1:*5:range7:numeric2:ge3:010))",
+		},
 	}
 
 	for _, tt := range tests {
@@ -573,5 +596,227 @@ func TestLoadBinaryErrors(t *testing.T) {
 	_, err = LoadFile(truncated, LoadOptions{Format: FormatBinary})
 	if err == nil {
 		t.Error("Expected error for truncated file")
+	}
+}
+
+// TestParseAdvanced_NestedStarForms is a regression test for the bug where
+// parseAdvanced (and advancedToCanonical) would flatten nested sub-expressions
+// containing *-forms into atoms at the wrong depth.
+//
+// Before the fix, `(outer (inner (* range numeric ge 080)))` produced a list
+// whose inner element was NOT a sub-list but a series of sibling atoms, causing
+// range predicates in policy rules to be silently ignored during evaluation.
+func TestParseAdvanced_NestedStarForms(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		checkInner  func(t *testing.T, elem sexp.Element)
+	}{
+		{
+			name:  "single level nesting with range",
+			input: "(outer (* range numeric ge 080))",
+			checkInner: func(t *testing.T, elem sexp.Element) {
+				list, ok := elem.(*sexp.List)
+				if !ok {
+					t.Fatalf("expected *sexp.List, got %T", elem)
+				}
+				if list.Tag != "outer" {
+					t.Fatalf("expected tag 'outer', got %q", list.Tag)
+				}
+				if len(list.Elements) != 1 {
+					t.Fatalf("expected 1 element, got %d", len(list.Elements))
+				}
+				r, ok := list.Elements[0].(*starform.Range)
+				if !ok {
+					t.Fatalf("expected *starform.Range as child, got %T", list.Elements[0])
+				}
+				if r.RangeType != starform.RangeNumeric {
+					t.Errorf("expected RangeNumeric, got %v", r.RangeType)
+				}
+				if r.LowerBound == nil || r.LowerBound.Op != starform.OpGE || r.LowerBound.Value != "080" {
+					t.Errorf("unexpected LowerBound: %+v", r.LowerBound)
+				}
+			},
+		},
+		{
+			// Regression: this exact pattern was broken before the fix.
+			name:  "two levels of nesting with range",
+			input: "(outer (inner (* range numeric ge 080)))",
+			checkInner: func(t *testing.T, elem sexp.Element) {
+				outer, ok := elem.(*sexp.List)
+				if !ok {
+					t.Fatalf("expected *sexp.List for outer, got %T", elem)
+				}
+				if outer.Tag != "outer" {
+					t.Fatalf("outer tag: got %q, want 'outer'", outer.Tag)
+				}
+				if len(outer.Elements) != 1 {
+					t.Fatalf("outer should have 1 child, got %d; elements: %v",
+						len(outer.Elements), outer.Elements)
+				}
+				inner, ok := outer.Elements[0].(*sexp.List)
+				if !ok {
+					t.Fatalf("outer.Elements[0]: expected *sexp.List (inner), got %T — "+
+						"this is the regression: starform was flattened", outer.Elements[0])
+				}
+				if inner.Tag != "inner" {
+					t.Fatalf("inner tag: got %q, want 'inner'", inner.Tag)
+				}
+				if len(inner.Elements) != 1 {
+					t.Fatalf("inner should have 1 child, got %d", len(inner.Elements))
+				}
+				r, ok := inner.Elements[0].(*starform.Range)
+				if !ok {
+					t.Fatalf("inner.Elements[0]: expected *starform.Range, got %T", inner.Elements[0])
+				}
+				if r.RangeType != starform.RangeNumeric {
+					t.Errorf("expected RangeNumeric, got %v", r.RangeType)
+				}
+				if r.LowerBound == nil || r.LowerBound.Value != "080" {
+					t.Errorf("unexpected LowerBound: %+v", r.LowerBound)
+				}
+			},
+		},
+		{
+			// The exact facetec-scan pattern from facetec-api/rules/default.spoc.
+			name:  "facetec-scan rule with two range predicates",
+			input: "(facetec-scan (liveness-score (* range numeric ge 080)) (face-match-level (* range numeric ge 06)) (doc-type passport) (mrz-verified true))",
+			checkInner: func(t *testing.T, elem sexp.Element) {
+				outer, ok := elem.(*sexp.List)
+				if !ok {
+					t.Fatalf("expected *sexp.List for facetec-scan, got %T", elem)
+				}
+				if outer.Tag != "facetec-scan" {
+					t.Fatalf("tag: got %q, want 'facetec-scan'", outer.Tag)
+				}
+				if len(outer.Elements) != 4 {
+					t.Fatalf("expected 4 children, got %d", len(outer.Elements))
+				}
+
+				// Check liveness-score sub-list.
+				ls, ok := outer.Elements[0].(*sexp.List)
+				if !ok {
+					t.Fatalf("Elements[0]: expected *sexp.List (liveness-score), got %T", outer.Elements[0])
+				}
+				if ls.Tag != "liveness-score" {
+					t.Errorf("liveness-score tag: got %q", ls.Tag)
+				}
+				if len(ls.Elements) != 1 {
+					t.Fatalf("liveness-score should have 1 child, got %d", len(ls.Elements))
+				}
+				lr, ok := ls.Elements[0].(*starform.Range)
+				if !ok {
+					t.Fatalf("liveness-score child: expected *starform.Range, got %T", ls.Elements[0])
+				}
+				if lr.LowerBound == nil || lr.LowerBound.Value != "080" {
+					t.Errorf("liveness-score range bound: %+v", lr.LowerBound)
+				}
+
+				// Check face-match-level sub-list.
+				fm, ok := outer.Elements[1].(*sexp.List)
+				if !ok {
+					t.Fatalf("Elements[1]: expected *sexp.List (face-match-level), got %T", outer.Elements[1])
+				}
+				if fm.Tag != "face-match-level" {
+					t.Errorf("face-match-level tag: got %q", fm.Tag)
+				}
+				fr, ok := fm.Elements[0].(*starform.Range)
+				if !ok {
+					t.Fatalf("face-match-level child: expected *starform.Range, got %T", fm.Elements[0])
+				}
+				if fr.LowerBound == nil || fr.LowerBound.Value != "06" {
+					t.Errorf("face-match-level range bound: %+v", fr.LowerBound)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			elem, err := parseAdvanced(tt.input)
+			if err != nil {
+				t.Fatalf("parseAdvanced(%q): %v", tt.input, err)
+			}
+			tt.checkInner(t, elem)
+		})
+	}
+}
+
+// TestLoadFile_AdvancedNestedRangeRules is an end-to-end regression test:
+// write a .spoc file in advanced format containing rules with nested starform
+// range predicates, load it, and verify the canonical representation matches.
+func TestLoadFile_AdvancedNestedRangeRules(t *testing.T) {
+	tmpDir := t.TempDir()
+	rulesFile := filepath.Join(tmpDir, "test.spoc")
+
+	content := `; accept passports
+(facetec-scan (liveness-score (* range numeric ge 080)) (face-match-level (* range numeric ge 06)) (doc-type passport) (mrz-verified true))
+; accept driving licences
+(facetec-scan (liveness-score (* range numeric ge 080)) (face-match-level (* range numeric ge 06)) (doc-type dl) (barcode-verified true))
+`
+	if err := os.WriteFile(rulesFile, []byte(content), 0644); err != nil {
+		t.Fatalf("write rules file: %v", err)
+	}
+
+	opts := LoadOptions{Format: FormatAdvanced, SkipInvalid: false, Comments: []string{"#", "//", ";"}}
+	rules, err := LoadFile(rulesFile, opts)
+	if err != nil {
+		t.Fatalf("LoadFile: %v", err)
+	}
+	if len(rules) != 2 {
+		t.Fatalf("expected 2 rules, got %d", len(rules))
+	}
+
+	want := []string{
+		"(12:facetec-scan(14:liveness-score(1:*5:range7:numeric2:ge3:080))(16:face-match-level(1:*5:range7:numeric2:ge2:06))(8:doc-type8:passport)(12:mrz-verified4:true))",
+		"(12:facetec-scan(14:liveness-score(1:*5:range7:numeric2:ge3:080))(16:face-match-level(1:*5:range7:numeric2:ge2:06))(8:doc-type2:dl)(16:barcode-verified4:true))",
+	}
+	for i, rule := range rules {
+		got := rule.String()
+		if got != want[i] {
+			t.Errorf("rule[%d]:\n  got:  %s\n  want: %s", i, got, want[i])
+		}
+	}
+}
+
+// TestAdvTokenize_NestedParens verifies that advTokenize preserves nested
+// parenthesised groups as single tokens (this is the property that
+// distinguishes it from the old broken tokenize implementation).
+func TestAdvTokenize_NestedParens(t *testing.T) {
+	tests := []struct {
+		input string
+		want  []string
+	}{
+		{
+			input: "http GET",
+			want:  []string{"http", "GET"},
+		},
+		{
+			input: "(action GET) (path /api)",
+			want:  []string{"(action GET)", "(path /api)"},
+		},
+		{
+			// The critical case: a sub-expression containing a further nested group.
+			input: "(liveness-score (* range numeric ge 080)) (doc-type passport)",
+			want:  []string{"(liveness-score (* range numeric ge 080))", "(doc-type passport)"},
+		},
+		{
+			input: `"quoted string" plain`,
+			want:  []string{`"quoted string"`, "plain"},
+		},
+	}
+
+	for _, tt := range tests {
+		got := advTokenize(tt.input)
+		if len(got) != len(tt.want) {
+			t.Errorf("advTokenize(%q): got %d tokens %v, want %d tokens %v",
+				tt.input, len(got), got, len(tt.want), tt.want)
+			continue
+		}
+		for i := range tt.want {
+			if got[i] != tt.want[i] {
+				t.Errorf("advTokenize(%q)[%d]: got %q, want %q", tt.input, i, got[i], tt.want[i])
+			}
+		}
 	}
 }
