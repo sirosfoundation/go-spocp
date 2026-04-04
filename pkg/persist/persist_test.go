@@ -353,7 +353,9 @@ func BenchmarkLoadCanonical(b *testing.B) {
 	for i := 0; i < 100; i++ {
 		rules[i] = sexp.NewList("http", sexp.NewAtom("GET"))
 	}
-	SaveFile(filename, rules, FormatCanonical)
+	if err := SaveFile(filename, rules, FormatCanonical); err != nil {
+		b.Fatalf("failed to save benchmark file: %v", err)
+	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
