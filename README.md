@@ -5,10 +5,10 @@
 [![CI](https://github.com/sirosfoundation/go-spocp/actions/workflows/ci.yml/badge.svg)](https://github.com/sirosfoundation/go-spocp/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/sirosfoundation/go-spocp.svg)](https://pkg.go.dev/github.com/sirosfoundation/go-spocp)
 [![Go Report Card](https://goreportcard.com/badge/github.com/sirosfoundation/go-spocp)](https://goreportcard.com/report/github.com/sirosfoundation/go-spocp)
+[![codecov](https://codecov.io/gh/sirosfoundation/go-spocp/branch/main/graph/badge.svg)](https://codecov.io/gh/sirosfoundation/go-spocp)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/sirosfoundation/go-spocp)](https://go.dev/)
 [![Issues](https://img.shields.io/github/issues/sirosfoundation/go-spocp)](https://github.com/sirosfoundation/go-spocp/issues)
 [![GHCR](https://img.shields.io/badge/ghcr.io-sirosfoundation%2Fgo--spocp-blue)](https://ghcr.io/sirosfoundation/go-spocp)
-[![codecov](https://codecov.io/gh/sirosfoundation/go-spocp/branch/main/graph/badge.svg)](https://codecov.io/gh/sirosfoundation/go-spocp)
 [![License](https://img.shields.io/badge/License-BSD_2--Clause-orange.svg)](LICENSE)
 
 </div>
