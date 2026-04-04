@@ -70,10 +70,9 @@ jobs:
         go-version: '1.23.x'
     
     - name: golangci-lint
-      uses: golangci/golangci-lint-action@v4
+      uses: golangci/golangci-lint-action@v7
       with:
-        version: v1.64.8
-        skip-cache: true
+        version: v2.1.6
         args: --verbose
 
   format:

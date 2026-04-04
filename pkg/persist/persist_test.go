@@ -616,9 +616,9 @@ func TestLoadBinaryErrors(t *testing.T) {
 // range predicates in policy rules to be silently ignored during evaluation.
 func TestParseAdvanced_NestedStarForms(t *testing.T) {
 	tests := []struct {
-		name        string
-		input       string
-		checkInner  func(t *testing.T, elem sexp.Element)
+		name       string
+		input      string
+		checkInner func(t *testing.T, elem sexp.Element)
 	}{
 		{
 			name:  "single level nesting with range",
