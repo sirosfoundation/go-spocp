@@ -357,7 +357,9 @@ func BenchmarkLoadCanonical(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		LoadFile(filename, DefaultLoadOptions())
+		if _, err := LoadFile(filename, DefaultLoadOptions()); err != nil {
+			b.Fatalf("LoadFile failed: %v", err)
+		}
 	}
 }
 
