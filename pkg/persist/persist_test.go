@@ -369,7 +369,9 @@ func BenchmarkLoadBinary(b *testing.B) {
 	for i := 0; i < 100; i++ {
 		rules[i] = sexp.NewList("http", sexp.NewAtom("GET"))
 	}
-	SaveFile(filename, rules, FormatBinary)
+	if err := SaveFile(filename, rules, FormatBinary); err != nil {
+		b.Fatalf("SaveFile (binary) failed: %v", err)
+	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
