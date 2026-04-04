@@ -326,7 +326,9 @@ func BenchmarkSaveCanonical(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		SaveFile(filename, rules, FormatCanonical)
+		if err := SaveFile(filename, rules, FormatCanonical); err != nil {
+			b.Fatalf("SaveFile failed during benchmark iteration %d: %v", i, err)
+		}
 	}
 }
 
@@ -353,11 +355,15 @@ func BenchmarkLoadCanonical(b *testing.B) {
 	for i := 0; i < 100; i++ {
 		rules[i] = sexp.NewList("http", sexp.NewAtom("GET"))
 	}
-	SaveFile(filename, rules, FormatCanonical)
+	if err := SaveFile(filename, rules, FormatCanonical); err != nil {
+		b.Fatalf("failed to save benchmark file: %v", err)
+	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		LoadFile(filename, DefaultLoadOptions())
+		if _, err := LoadFile(filename, DefaultLoadOptions()); err != nil {
+			b.Fatalf("LoadFile failed: %v", err)
+		}
 	}
 }
 
@@ -369,7 +375,9 @@ func BenchmarkLoadBinary(b *testing.B) {
 	for i := 0; i < 100; i++ {
 		rules[i] = sexp.NewList("http", sexp.NewAtom("GET"))
 	}
-	SaveFile(filename, rules, FormatBinary)
+	if err := SaveFile(filename, rules, FormatBinary); err != nil {
+		b.Fatalf("SaveFile (binary) failed: %v", err)
+	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
