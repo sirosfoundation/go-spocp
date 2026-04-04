@@ -326,7 +326,9 @@ func BenchmarkSaveCanonical(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		SaveFile(filename, rules, FormatCanonical)
+		if err := SaveFile(filename, rules, FormatCanonical); err != nil {
+			b.Fatalf("SaveFile failed during benchmark iteration %d: %v", i, err)
+		}
 	}
 }
 
