@@ -182,3 +182,153 @@ func TestCanonicalFormRoundTrip(t *testing.T) {
 		})
 	}
 }
+
+func TestParseAll(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected int
+	}{
+		{
+			"single expression",
+			"(4:http3:GET)",
+			1,
+		},
+		{
+			"two expressions same line",
+			"(4:http3:GET)(4:http4:POST)",
+			2,
+		},
+		{
+			"two expressions with whitespace",
+			"(4:http3:GET)  (4:http4:POST)",
+			2,
+		},
+		{
+			"expressions on separate lines",
+			"(4:http3:GET)\n(4:http4:POST)",
+			2,
+		},
+		{
+			"expression with newlines and spaces",
+			"  (4:http3:GET)  \n\n  (4:http4:POST)  \n",
+			2,
+		},
+		{
+			"three expressions",
+			"(4:http3:GET)\n(4:http4:POST)\n(4:http6:DELETE)",
+			3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parser := NewParser(tt.input)
+			elements, err := parser.ParseAll()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(elements) != tt.expected {
+				t.Errorf("expected %d elements, got %d", tt.expected, len(elements))
+			}
+		})
+	}
+}
+
+func TestParseAllMultiLine(t *testing.T) {
+	// Test a complex multi-line s-expression that couldn't be parsed line-by-line
+	input := `(7:authzen
+(6:tenant)
+(6:action5:check)
+(8:resource
+  (4:type3:jwk)
+  (2:id))
+(7:subject
+  (4:type3:key)
+  (2:id)))`
+
+	parser := NewParser(input)
+	elements, err := parser.ParseAll()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(elements) != 1 {
+		t.Fatalf("expected 1 element, got %d", len(elements))
+	}
+
+	list, ok := elements[0].(*List)
+	if !ok {
+		t.Fatalf("expected List, got %T", elements[0])
+	}
+	if list.Tag != "authzen" {
+		t.Errorf("expected tag 'authzen', got %q", list.Tag)
+	}
+	// Should have 4 sub-elements: tenant, action, resource, subject
+	if len(list.Elements) != 4 {
+		t.Errorf("expected 4 elements, got %d", len(list.Elements))
+	}
+}
+
+func TestParseAllFromString(t *testing.T) {
+	input := "(4:http3:GET)\n(4:http4:POST)"
+	elements, err := ParseAllFromString(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(elements) != 2 {
+		t.Errorf("expected 2 elements, got %d", len(elements))
+	}
+}
+
+func TestSkipToNextExpression(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		startPos int
+		found    bool
+		endPos   int
+	}{
+		{
+			"finds opening paren",
+			"xxx(4:test)",
+			0,
+			true,
+			3, // position of '('
+		},
+		{
+			"finds digit",
+			"xxx5:hello",
+			0,
+			true,
+			3, // position of '5'
+		},
+		{
+			"no expression found",
+			"xxxyyy",
+			0,
+			false,
+			6, // end of input
+		},
+		{
+			"already at expression start",
+			"(4:test)",
+			0,
+			true,
+			0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parser := NewParser(tt.input)
+			parser.pos = tt.startPos
+			found := parser.SkipToNextExpression()
+			if found != tt.found {
+				t.Errorf("expected found=%v, got %v", tt.found, found)
+			}
+			if parser.pos != tt.endPos {
+				t.Errorf("expected pos=%d, got %d", tt.endPos, parser.pos)
+			}
+		})
+	}
+}
