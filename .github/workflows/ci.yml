@@ -13,9 +13,6 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        go-version: ['1.26.x']
     
     steps:
     - name: Checkout code
@@ -24,7 +21,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: ${{ matrix.go-version }}
+        go-version-file: go.mod
     
     - name: Download dependencies
       run: go mod download
@@ -48,7 +45,6 @@ jobs:
     
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
-      if: matrix.go-version == '1.26.x'
       with:
         files: ./coverage.out
         flags: unittests
@@ -67,7 +63,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.26.x'
+        go-version-file: go.mod
     
     - name: golangci-lint
       uses: golangci/golangci-lint-action@v7
@@ -86,7 +82,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.26.x'
+        go-version-file: go.mod
     
     - name: Check formatting
       run: |
@@ -112,7 +108,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.26.x'
+        go-version-file: go.mod
     
     - name: Build main package
       run: go build -v .
