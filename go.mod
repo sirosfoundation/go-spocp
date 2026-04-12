@@ -1,3 +1,3 @@
 module github.com/sirosfoundation/go-spocp
 
-go 1.23
+go 1.26
