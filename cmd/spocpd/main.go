@@ -51,35 +51,38 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Parse log level into Zap level
-	var zapLevel zapcore.Level
-	switch *logLevel {
-	case "silent":
-		zapLevel = zapcore.FatalLevel // effectively silent
-	case "error":
-		zapLevel = zapcore.ErrorLevel
-	case "warn":
-		zapLevel = zapcore.WarnLevel
-	case "info":
-		zapLevel = zapcore.InfoLevel
-	case "debug":
-		zapLevel = zapcore.DebugLevel
-	default:
-		fmt.Fprintf(os.Stderr, "Invalid log level: %s (must be: silent, error, warn, info, debug)\n", *logLevel)
-		os.Exit(1)
-	}
-
 	// Build Zap logger
-	zapCfg := zap.NewProductionConfig()
-	zapCfg.Level = zap.NewAtomicLevelAt(zapLevel)
-	zapCfg.EncoderConfig.TimeKey = "ts"
-	zapCfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-	logger, err := zapCfg.Build()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create logger: %v\n", err)
-		os.Exit(1)
+	var logger *zap.Logger
+	if *logLevel == "silent" {
+		logger = zap.NewNop()
+	} else {
+		var zapLevel zapcore.Level
+		switch *logLevel {
+		case "error":
+			zapLevel = zapcore.ErrorLevel
+		case "warn":
+			zapLevel = zapcore.WarnLevel
+		case "info":
+			zapLevel = zapcore.InfoLevel
+		case "debug":
+			zapLevel = zapcore.DebugLevel
+		default:
+			fmt.Fprintf(os.Stderr, "Invalid log level: %s (must be: silent, error, warn, info, debug)\n", *logLevel)
+			os.Exit(1)
+		}
+
+		zapCfg := zap.NewProductionConfig()
+		zapCfg.Level = zap.NewAtomicLevelAt(zapLevel)
+		zapCfg.EncoderConfig.TimeKey = "ts"
+		zapCfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+		var err error
+		logger, err = zapCfg.Build()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create logger: %v\n", err)
+			os.Exit(1)
+		}
+		defer logger.Sync() //nolint:errcheck
 	}
-	defer logger.Sync() //nolint:errcheck
 
 	// Setup TLS if certificates are provided
 	var tlsConfig *tls.Config
@@ -100,6 +103,7 @@ func main() {
 
 	var srv *server.Server
 	var httpSrv *httpserver.HTTPServer
+	var err error
 
 	// Create TCP server if enabled
 	if *tcpEnabled {
