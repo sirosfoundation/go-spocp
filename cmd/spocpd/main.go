@@ -5,10 +5,12 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/sirosfoundation/go-spocp/pkg/httpserver"
 	"github.com/sirosfoundation/go-spocp/pkg/server"
@@ -49,43 +51,51 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Parse log level
-	var level server.LogLevel
+	// Parse log level into Zap level
+	var zapLevel zapcore.Level
 	switch *logLevel {
 	case "silent":
-		level = server.LogLevelSilent
+		zapLevel = zapcore.FatalLevel // effectively silent
 	case "error":
-		level = server.LogLevelError
+		zapLevel = zapcore.ErrorLevel
 	case "warn":
-		level = server.LogLevelWarn
+		zapLevel = zapcore.WarnLevel
 	case "info":
-		level = server.LogLevelInfo
+		zapLevel = zapcore.InfoLevel
 	case "debug":
-		level = server.LogLevelDebug
+		zapLevel = zapcore.DebugLevel
 	default:
-		log.Fatalf("Invalid log level: %s (must be: silent, error, warn, info, debug)", *logLevel)
+		fmt.Fprintf(os.Stderr, "Invalid log level: %s (must be: silent, error, warn, info, debug)\n", *logLevel)
+		os.Exit(1)
 	}
 
-	// Setup logger
-	logger := log.New(os.Stdout, "[SPOCP] ", log.LstdFlags)
+	// Build Zap logger
+	zapCfg := zap.NewProductionConfig()
+	zapCfg.Level = zap.NewAtomicLevelAt(zapLevel)
+	zapCfg.EncoderConfig.TimeKey = "ts"
+	zapCfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	logger, err := zapCfg.Build()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create logger: %v\n", err)
+		os.Exit(1)
+	}
+	defer logger.Sync() //nolint:errcheck
 
 	// Setup TLS if certificates are provided
 	var tlsConfig *tls.Config
 	if *tlsCert != "" && *tlsKey != "" {
 		cert, err := tls.LoadX509KeyPair(*tlsCert, *tlsKey)
 		if err != nil {
-			log.Fatalf("Failed to load TLS certificates: %v", err)
+			logger.Fatal("Failed to load TLS certificates", zap.Error(err))
 		}
 
 		tlsConfig = &tls.Config{
 			Certificates: []tls.Certificate{cert},
 			MinVersion:   tls.VersionTLS12,
 		}
-		if level >= server.LogLevelInfo {
-			logger.Println("[INFO] TLS enabled for TCP server")
-		}
+		logger.Info("TLS enabled for TCP server")
 	} else if *tlsCert != "" || *tlsKey != "" {
-		log.Fatal("Both -tls-cert and -tls-key must be specified for TLS")
+		logger.Fatal("Both -tls-cert and -tls-key must be specified for TLS")
 	}
 
 	var srv *server.Server
@@ -99,14 +109,12 @@ func main() {
 			TLSConfig:      tlsConfig,
 			ReloadInterval: *reloadInterval,
 			PidFile:        *pidFile,
-			Logger:         logger,
-			LogLevel:       level,
+			Logger:         logger.Named("tcp"),
 		}
 
-		var err error
 		srv, err = server.NewServer(config)
 		if err != nil {
-			log.Fatalf("Failed to create TCP server: %v", err)
+			logger.Fatal("Failed to create TCP server", zap.Error(err))
 		}
 	}
 
@@ -114,8 +122,7 @@ func main() {
 	httpConfig := &httpserver.Config{
 		Address:       *httpAddress,
 		EnableAuthZen: *authzenEnabled,
-		Logger:        logger,
-		LogLevel:      level,
+		Logger:        logger.Named("http"),
 	}
 
 	// Share engine from TCP server if available, otherwise create standalone
@@ -129,13 +136,12 @@ func main() {
 		httpConfig.PidFile = *pidFile
 	}
 
-	var err error
 	httpSrv, err = httpserver.NewHTTPServer(httpConfig)
 	if err != nil {
 		if srv != nil {
 			srv.Close()
 		}
-		log.Fatalf("Failed to create HTTP server: %v", err)
+		logger.Fatal("Failed to create HTTP server", zap.Error(err))
 	}
 
 	// Handle shutdown signals
@@ -146,9 +152,7 @@ func main() {
 	shutdownComplete := make(chan struct{})
 	go func() {
 		<-sigChan
-		if level >= server.LogLevelInfo {
-			logger.Println("[INFO] Received shutdown signal")
-		}
+		logger.Info("Received shutdown signal")
 		if srv != nil {
 			srv.Close()
 		}
@@ -159,38 +163,25 @@ func main() {
 	}()
 
 	// Start servers
-	if level >= server.LogLevelInfo {
-		logger.Printf("[INFO] SPOCP Server starting...")
-		logger.Printf("[INFO]   Rules directory: %s", *rulesDir)
-		if *tcpEnabled {
-			logger.Printf("[INFO]   TCP server: %s", *tcpAddress)
-			if tlsConfig != nil {
-				logger.Printf("[INFO]     TLS: enabled")
-			}
-		}
-		logger.Printf("[INFO]   HTTP server: %s", *httpAddress)
-		if *authzenEnabled {
-			logger.Printf("[INFO]     AuthZen API: enabled")
-		}
-		logger.Printf("[INFO]     Health/Stats: always enabled")
-		if *reloadInterval > 0 {
-			logger.Printf("[INFO]   Auto-reload: every %v", *reloadInterval)
-		}
-		if *pidFile != "" {
-			logger.Printf("[INFO]   PID file: %s", *pidFile)
-		}
-		logger.Printf("[INFO]   Log level: %s", *logLevel)
-	}
+	logger.Info("SPOCP Server starting",
+		zap.String("rules_dir", *rulesDir),
+		zap.Bool("tcp", *tcpEnabled),
+		zap.String("tcp_addr", *tcpAddress),
+		zap.String("http_addr", *httpAddress),
+		zap.Bool("authzen", *authzenEnabled),
+		zap.Duration("reload_interval", *reloadInterval),
+		zap.String("log_level", *logLevel),
+	)
 
 	// Always start HTTP server in background
 	if err := httpSrv.Start(); err != nil {
-		log.Fatalf("HTTP server error: %v", err)
+		logger.Fatal("HTTP server error", zap.Error(err))
 	}
 
 	// Start TCP server (blocking) if enabled, otherwise wait for shutdown
 	if *tcpEnabled && srv != nil {
 		if err := srv.Serve(); err != nil {
-			log.Fatalf("TCP server error: %v", err)
+			logger.Fatal("TCP server error", zap.Error(err))
 		}
 	} else {
 		// No TCP server: wait for shutdown signal

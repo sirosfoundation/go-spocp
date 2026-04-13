@@ -71,7 +71,6 @@ func TestNewServer(t *testing.T) {
 	srv, err := NewServer(&Config{
 		Address:  ":0",
 		RulesDir: rulesDir,
-		LogLevel: LogLevelDebug,
 	})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
@@ -146,7 +145,6 @@ func TestHandleMessage(t *testing.T) {
 	srv, err := NewServer(&Config{
 		Address:  ":0",
 		RulesDir: rulesDir,
-		LogLevel: LogLevelDebug,
 	})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
@@ -259,7 +257,6 @@ func TestHealthEndpoint(t *testing.T) {
 		Address:    ":0",
 		RulesDir:   rulesDir,
 		HealthAddr: ":0",
-		LogLevel:   LogLevelInfo,
 	})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
@@ -292,7 +289,6 @@ func TestReadyEndpoint(t *testing.T) {
 		Address:    ":0",
 		RulesDir:   rulesDir,
 		HealthAddr: ":0",
-		LogLevel:   LogLevelInfo,
 	})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
@@ -451,25 +447,15 @@ func TestLogging(t *testing.T) {
 	rulesDir := createTempRulesDir(t, []string{"(4:read)"})
 	defer os.RemoveAll(rulesDir)
 
-	levels := []LogLevel{
-		LogLevelSilent,
-		LogLevelError,
-		LogLevelWarn,
-		LogLevelInfo,
-		LogLevelDebug,
+	// Verify server works with default (nil) logger
+	srv, err := NewServer(&Config{
+		Address:  ":0",
+		RulesDir: rulesDir,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create server with default logger: %v", err)
 	}
-
-	for _, level := range levels {
-		srv, err := NewServer(&Config{
-			Address:  ":0",
-			RulesDir: rulesDir,
-			LogLevel: level,
-		})
-		if err != nil {
-			t.Fatalf("Failed to create server with log level %d: %v", level, err)
-		}
-		srv.Close()
-	}
+	srv.Close()
 }
 
 // TestReloadRules tests rule reloading
@@ -501,7 +487,6 @@ func TestClientConnection(t *testing.T) {
 	srv, err := NewServer(&Config{
 		Address:  "127.0.0.1:0",
 		RulesDir: rulesDir,
-		LogLevel: LogLevelDebug,
 	})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
@@ -595,7 +580,7 @@ func TestHealthCheckStart(t *testing.T) {
 
 	// Make a request to health endpoint
 	healthAddr := srv.healthListener.Addr().String()
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://"+healthAddr+"/health", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://"+healthAddr+"/healthz", nil)
 	if err != nil {
 		t.Fatalf("Failed to create request: %v", err)
 	}

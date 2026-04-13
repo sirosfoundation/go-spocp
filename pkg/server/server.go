@@ -6,9 +6,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"io"
 	"io/fs"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -18,20 +16,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/sirosfoundation/go-spocp"
 	"github.com/sirosfoundation/go-spocp/pkg/persist"
 	"github.com/sirosfoundation/go-spocp/pkg/protocol"
-)
-
-// LogLevel defines the verbosity of logging
-type LogLevel int
-
-const (
-	LogLevelSilent LogLevel = iota // No logging except errors
-	LogLevelError                  // Errors only
-	LogLevelWarn                   // Warnings and errors
-	LogLevelInfo                   // Informational messages (default)
-	LogLevelDebug                  // Verbose debugging
 )
 
 // Server represents a SPOCP TCP server
@@ -42,8 +31,7 @@ type Server struct {
 	tlsConfig      *tls.Config
 	mu             sync.RWMutex
 	reloadMutex    sync.Mutex
-	logger         *log.Logger
-	logLevel       LogLevel
+	logger         *zap.SugaredLogger
 	ctx            context.Context
 	cancel         context.CancelFunc
 	wg             sync.WaitGroup
@@ -76,11 +64,8 @@ type Config struct {
 	// TLS configuration (optional, nil for plain TCP)
 	TLSConfig *tls.Config
 
-	// Logger (optional, defaults to discard logger)
-	Logger *log.Logger
-
-	// LogLevel controls verbosity (default: LogLevelError)
-	LogLevel LogLevel
+	// Logger (optional, defaults to zap.NewNop())
+	Logger *zap.Logger
 
 	// ReloadInterval for automatic rule reloading (0 to disable)
 	ReloadInterval time.Duration
@@ -116,12 +101,7 @@ func NewServer(config *Config) (*Server, error) {
 	// Setup logger
 	logger := config.Logger
 	if logger == nil {
-		logger = log.New(io.Discard, "[SPOCP] ", log.LstdFlags)
-	}
-
-	logLevel := config.LogLevel
-	if logLevel == 0 {
-		logLevel = LogLevelError // Default to minimal logging
+		logger = zap.NewNop()
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -136,8 +116,7 @@ func NewServer(config *Config) (*Server, error) {
 		engine:     engine,
 		rulesDir:   config.RulesDir,
 		tlsConfig:  config.TLSConfig,
-		logger:     logger,
-		logLevel:   logLevel,
+		logger:     logger.Sugar(),
 		ctx:        ctx,
 		cancel:     cancel,
 		pidFile:    config.PidFile,
@@ -482,30 +461,22 @@ func (s *Server) autoReload(interval time.Duration) {
 	}
 }
 
-// Logging helpers with level filtering
+// Logging helpers
 
 func (s *Server) logDebug(format string, v ...interface{}) {
-	if s.logLevel >= LogLevelDebug {
-		s.logger.Printf("[DEBUG] "+format, v...)
-	}
+	s.logger.Debugf(format, v...)
 }
 
 func (s *Server) logInfo(format string, v ...interface{}) {
-	if s.logLevel >= LogLevelInfo {
-		s.logger.Printf("[INFO] "+format, v...)
-	}
+	s.logger.Infof(format, v...)
 }
 
 func (s *Server) logWarn(format string, v ...interface{}) {
-	if s.logLevel >= LogLevelWarn {
-		s.logger.Printf("[WARN] "+format, v...)
-	}
+	s.logger.Warnf(format, v...)
 }
 
 func (s *Server) logError(format string, v ...interface{}) {
-	if s.logLevel >= LogLevelError {
-		s.logger.Printf("[ERROR] "+format, v...)
-	}
+	s.logger.Errorf(format, v...)
 }
 
 // PID file management
@@ -555,10 +526,10 @@ func (s *Server) startHealthCheck() error {
 	mux := http.NewServeMux()
 
 	// Health endpoint
-	mux.HandleFunc("/health", s.handleHealth)
+	mux.HandleFunc("/healthz", s.handleHealth)
 
 	// Readiness endpoint
-	mux.HandleFunc("/ready", s.handleReady)
+	mux.HandleFunc("/readyz", s.handleReady)
 
 	// Metrics endpoint
 	mux.HandleFunc("/metrics", s.handleMetrics)

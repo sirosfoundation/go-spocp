@@ -275,9 +275,8 @@ func runTCPBenchmark(engine *spocp.Engine, testCases []TestCase, port, warmup, c
 
 	// Start TCP server
 	tcpConfig := &server.Config{
-		Address:  tcpAddr,
-		Engine:   engine,
-		LogLevel: server.LogLevelSilent,
+		Address: tcpAddr,
+		Engine:  engine,
 	}
 
 	tcpServer, err := server.NewServer(tcpConfig)
@@ -420,7 +419,6 @@ func runHTTPBenchmark(engine *spocp.Engine, testCases []TestCase, port, warmup, 
 		EnableAuthZen: true,
 		Engine:        engine,
 		EngineMutex:   &mu,
-		LogLevel:      server.LogLevelSilent,
 	}
 
 	httpServer, err := httpserver.NewHTTPServer(httpConfig)
