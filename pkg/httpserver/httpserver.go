@@ -1,7 +1,7 @@
 // Package httpserver implements HTTP monitoring and optional AuthZen API for SPOCP.
 //
 // This package provides an HTTP server that:
-//  1. Always provides health and monitoring endpoints (/health, /ready, /stats, /metrics)
+//  1. Always provides health and monitoring endpoints (/healthz, /readyz, /stats, /metrics)
 //  2. Optionally provides the AuthZen Authorization API 1.0 endpoint (/access/v1/evaluation)
 //
 // The HTTP server serves as a unified monitoring interface for both TCP and HTTP/AuthZen
@@ -18,7 +18,6 @@
 //	    Address:       ":8000",
 //	    EnableAuthZen: true,
 //	    RulesDir:      "/etc/spocp/rules",
-//	    LogLevel:      server.LogLevelInfo,
 //	}
 //	srv, err := httpserver.NewHTTPServer(config)
 //	if err != nil {
@@ -34,15 +33,14 @@
 //	    EnableAuthZen: false,  // Only monitoring endpoints
 //	    Engine:        tcpSrv.GetEngine(),
 //	    EngineMutex:   tcpSrv.GetEngineMutex(),
-//	    LogLevel:      server.LogLevelInfo,
 //	}
 //	httpSrv, _ := httpserver.NewHTTPServer(config)
 //	httpSrv.Start()
 //
 // The server exposes the following endpoints:
 //
-//	GET  /health                - Health check endpoint (always enabled)
-//	GET  /ready                 - Readiness check (always enabled, checks if rules are loaded)
+//	GET  /healthz               - Health check endpoint (always enabled)
+//	GET  /readyz                - Readiness check (always enabled, checks if rules are loaded)
 //	GET  /stats                 - JSON statistics (always enabled, requests, rules, indexing)
 //	GET  /metrics               - Prometheus-style metrics (always enabled)
 //	POST /access/v1/evaluation  - AuthZen API (optional, enabled via EnableAuthZen flag)
@@ -67,7 +65,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
-	"log"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -75,22 +72,22 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/sirosfoundation/go-spocp"
 	"github.com/sirosfoundation/go-spocp/pkg/authzen"
 	"github.com/sirosfoundation/go-spocp/pkg/persist"
-	"github.com/sirosfoundation/go-spocp/pkg/server"
 )
 
 // HTTPServer provides an HTTP/AuthZen interface to SPOCP engine.
 type HTTPServer struct {
-	server   *http.Server
-	engine   *spocp.Engine
-	mu       *sync.RWMutex // Pointer to allow sharing mutex with other components
-	logger   *log.Logger
-	logLevel server.LogLevel
-	ctx      context.Context
-	cancel   context.CancelFunc
-	wg       sync.WaitGroup
+	server *http.Server
+	engine *spocp.Engine
+	mu     *sync.RWMutex // Pointer to allow sharing mutex with other components
+	logger *zap.SugaredLogger
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 
 	// Metrics
 	metrics struct {
@@ -118,11 +115,8 @@ type Config struct {
 	// EngineMutex protects engine access (optional - will be created if not provided)
 	EngineMutex *sync.RWMutex
 
-	// Logger (optional)
-	Logger *log.Logger
-
-	// LogLevel controls verbosity
-	LogLevel server.LogLevel
+	// Logger (optional, defaults to zap.NewNop())
+	Logger *zap.Logger
 
 	// ReloadInterval for automatic rule reloading (0 to disable)
 	ReloadInterval time.Duration
@@ -142,15 +136,13 @@ type Config struct {
 //   - Either RulesDir (standalone) or Engine + EngineMutex (shared)
 //
 // Optional config fields:
-//   - Logger: Custom logger (defaults to standard logger with [SPOCP-HTTP] prefix)
-//   - LogLevel: Controls verbosity (0=silent, 1=error, 2=warn, 3=info, 4=debug)
+//   - Logger: Custom Zap logger (defaults to zap.NewNop())
 //
 // Example (standalone):
 //
 //	srv, err := NewHTTPServer(&Config{
 //	    Address: ":8000",
 //	    RulesDir: "/etc/spocp/rules",
-//	    LogLevel: 3,
 //	})
 //
 // Example (shared with TCP server):
@@ -181,17 +173,16 @@ func NewHTTPServer(config *Config) (*HTTPServer, error) {
 
 	logger := config.Logger
 	if logger == nil {
-		logger = log.New(log.Writer(), "[SPOCP-HTTP] ", log.LstdFlags)
+		logger = zap.NewNop()
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	hs := &HTTPServer{
-		engine:   config.Engine,
-		logger:   logger,
-		logLevel: config.LogLevel,
-		ctx:      ctx,
-		cancel:   cancel,
+		engine: config.Engine,
+		logger: logger.Sugar(),
+		ctx:    ctx,
+		cancel: cancel,
 	}
 
 	// If engine mutex provided, use it; otherwise create own mutex
@@ -210,8 +201,8 @@ func NewHTTPServer(config *Config) (*HTTPServer, error) {
 	}
 
 	// Health and monitoring endpoints (always enabled)
-	mux.HandleFunc("/health", hs.handleHealth)
-	mux.HandleFunc("/ready", hs.handleReady)
+	mux.HandleFunc("/healthz", hs.handleHealth)
+	mux.HandleFunc("/readyz", hs.handleReady)
 	mux.HandleFunc("/stats", hs.handleStats)
 	mux.HandleFunc("/metrics", hs.handleMetrics)
 
@@ -497,21 +488,15 @@ func (hs *HTTPServer) handleStats(w http.ResponseWriter, r *http.Request) {
 
 // Logging helpers
 func (hs *HTTPServer) logDebug(format string, v ...interface{}) {
-	if hs.logLevel >= server.LogLevelDebug {
-		hs.logger.Printf("[DEBUG] "+format, v...)
-	}
+	hs.logger.Debugf(format, v...)
 }
 
 func (hs *HTTPServer) logInfo(format string, v ...interface{}) {
-	if hs.logLevel >= server.LogLevelInfo {
-		hs.logger.Printf("[INFO] "+format, v...)
-	}
+	hs.logger.Infof(format, v...)
 }
 
 func (hs *HTTPServer) logError(format string, v ...interface{}) {
-	if hs.logLevel >= server.LogLevelError {
-		hs.logger.Printf("[ERROR] "+format, v...)
-	}
+	hs.logger.Errorf(format, v...)
 }
 
 // GetMetrics returns current metrics.

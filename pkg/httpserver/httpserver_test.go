@@ -15,7 +15,6 @@ import (
 
 	"github.com/sirosfoundation/go-spocp"
 	"github.com/sirosfoundation/go-spocp/pkg/authzen"
-	"github.com/sirosfoundation/go-spocp/pkg/server"
 )
 
 // Helper to create a test engine with rules
@@ -263,7 +262,6 @@ func TestEvaluationEndpoint(t *testing.T) {
 		Address:       ":0",
 		Engine:        engine,
 		EnableAuthZen: true,
-		LogLevel:      server.LogLevelDebug,
 	})
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
@@ -456,27 +454,16 @@ func TestGetMetrics(t *testing.T) {
 func TestLogging(t *testing.T) {
 	engine := createTestEngine([]string{"(4:read)"})
 
-	// Test different log levels
-	levels := []server.LogLevel{
-		server.LogLevelSilent,
-		server.LogLevelError,
-		server.LogLevelWarn,
-		server.LogLevelInfo,
-		server.LogLevelDebug,
+	// Verify server works with default (nil) logger
+	srv, err := NewHTTPServer(&Config{
+		Address: ":0",
+		Engine:  engine,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create server with default logger: %v", err)
 	}
-
-	for _, level := range levels {
-		srv, err := NewHTTPServer(&Config{
-			Address:  ":0",
-			Engine:   engine,
-			LogLevel: level,
-		})
-		if err != nil {
-			t.Fatalf("Failed to create server with log level %d: %v", level, err)
-		}
-		if srv == nil {
-			t.Errorf("Expected non-nil server with log level %d", level)
-		}
+	if srv == nil {
+		t.Error("Expected non-nil server")
 	}
 }
 
