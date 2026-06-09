@@ -1,6 +1,6 @@
 module github.com/sirosfoundation/go-spocp
 
-go 1.26
+go 1.26.4
 
 require go.uber.org/zap v1.27.1
 
