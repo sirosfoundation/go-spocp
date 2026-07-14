@@ -8,6 +8,7 @@
 [![codecov](https://codecov.io/gh/sirosfoundation/go-spocp/branch/main/graph/badge.svg)](https://codecov.io/gh/sirosfoundation/go-spocp)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/sirosfoundation/go-spocp)](https://go.dev/)
 [![GHCR](https://img.shields.io/badge/ghcr.io-sirosfoundation%2Fgo--spocp-blue)](https://ghcr.io/sirosfoundation/go-spocp)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/sirosfoundation/go-spocp/badge)](https://scorecard.dev/viewer/?uri=github.com/sirosfoundation/go-spocp)
 [![License](https://img.shields.io/badge/License-BSD_2--Clause-orange.svg)](LICENSE)
 
 </div>
